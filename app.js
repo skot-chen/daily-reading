@@ -1,22 +1,44 @@
 // Daily Reading — page logic. Pure logic lives in lib.js (tested); this file is DOM, player and sync.
 import { parseVideoId, partFromTitle, fmtTime, newPart, newCard, clampRange, sortCards, deleteCard, mergeParts,
-  partStats, partPath } from "./lib.js";
+  partStats, partPath, validatePart } from "./lib.js";
 
 const NOTES_REPO = "skot-chen/daily-reading-notes";
 
 // ---------- storage (this browser) ----------
+let storageBroken = false;
 const store = {
-  get(k, d) { try { const v = localStorage.getItem("dr." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("dr." + k, JSON.stringify(v)); } catch { /* private mode: keep in memory */ } },
+  get(k, d) {
+    let raw = null;
+    try { raw = localStorage.getItem("dr." + k); } catch { return d; }
+    if (raw == null) return d;
+    try { return JSON.parse(raw); } catch {
+      // Never overwrite unreadable data: keep a copy aside so nothing is lost.
+      try { localStorage.setItem("dr." + k + ".broken-" + Date.now(), raw); } catch { /* full */ }
+      storageBroken = true;
+      return d;
+    }
+  },
+  /** @returns {boolean} false if the browser refused to save (full / private mode) */
+  set(k, v) { try { localStorage.setItem("dr." + k, JSON.stringify(v)); return true; } catch { return false; } },
 };
 /** @type {Record<string, any>} video id → Part */
 let parts = store.get("parts", {});
 /** @type {Record<string, string>} video id → `updated` value last pushed/pulled */
 let synced = store.get("synced", {});
 let shas = store.get("shas", {});
-function persist() { store.set("parts", parts); store.set("synced", synced); store.set("shas", shas); }
-function savePart(p) { p.updated = new Date().toISOString(); parts[p.video] = p; persist(); scheduleSync(); }
-function uid() { return "c_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+let warnedFull = false;
+function persist() {
+  const ok = store.set("parts", parts) && store.set("synced", synced) && store.set("shas", shas);
+  if (!ok && !warnedFull) { warnedFull = true; toast("⚠️ 这个浏览器存不下了，刚才的修改可能会丢。Storage is full — connect sync or free space."); }
+  if (ok) warnedFull = false;
+}
+/** Save a Part. If the page still holds an older copy (a sync replaced it meanwhile), merge instead of overwriting. */
+function savePart(p) {
+  p.updated = new Date().toISOString();
+  const cur = parts[p.video];
+  parts[p.video] = cur && cur !== p ? mergeParts(cur, p) : p;
+  persist(); scheduleSync();
+}function uid() { return "c_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 // ---------- tiny DOM helper ----------
 function el(tag, attrs, ...kids) {
@@ -31,14 +53,13 @@ function el(tag, attrs, ...kids) {
   return n;
 }
 const $app = document.getElementById("app");
-const $playerBox = document.getElementById("player-box");
 function toast(msg) {
   const t = document.getElementById("toast");
   t.textContent = msg; t.hidden = false;
   clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 3200);
 }
 
-// ---------- YouTube player (one for the whole page, moved between views) ----------
+// ---------- YouTube player (a fresh one per page view) ----------
 let player = null, playerReady = false, currentVideo = null, rangeEnd = null, rangeTimer = null, captionsOffFor = null;
 const ytReady = new Promise((resolve) => {
   window.onYouTubeIframeAPIReady = resolve;
@@ -47,29 +68,34 @@ const ytReady = new Promise((resolve) => {
   s.onerror = () => toast("YouTube 播放器加载失败，检查网络。Couldn't load the YouTube player.");
   document.head.append(s);
 });
-async function showVideo(video) {
+/** Create a fresh player inside `host` (moving an iframe in the page reloads it and breaks the API link). */
+async function showVideo(video, host) {
+  dropPlayer();
+  const box = el("div", { class: "player-box" }, el("div", {}));
+  host.append(box);
   await ytReady;
-  if (!player) {
-    player = new YT.Player("player", {
-      videoId: video, playerVars: { playsinline: 1, rel: 0, cc_load_policy: 0 },
-      events: {
-        onReady: () => { playerReady = true; learnTitle(); },
-        onStateChange: (e) => {
-          if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.CUED) learnTitle();
-          // Listen without subtitles: switch captions off once per video (the learner can still turn them on).
-          if (e.data === YT.PlayerState.PLAYING && captionsOffFor !== currentVideo) {
-            captionsOffFor = currentVideo;
-            try { player.unloadModule("captions"); player.unloadModule("cc"); } catch { /* not available */ }
-          }
-        },
-      },
-    });
-  } else if (currentVideo !== video && playerReady) {
-    player.cueVideoById(video);
-  }
+  if (!box.isConnected) return; // the learner already left this page
   currentVideo = video;
+  player = new YT.Player(box.firstChild, {
+    videoId: video, playerVars: { playsinline: 1, rel: 0, cc_load_policy: 0 },
+    events: {
+      onReady: () => { playerReady = true; learnTitle(); },
+      onStateChange: (e) => {
+        if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.CUED) learnTitle();
+        // Listen without subtitles: switch captions off once per video (the learner can still turn them on).
+        if (e.data === YT.PlayerState.PLAYING && captionsOffFor !== currentVideo) {
+          captionsOffFor = currentVideo;
+          try { player.unloadModule("captions"); player.unloadModule("cc"); } catch { /* not available */ }
+        }
+      },
+    },
+  });
 }
-function placePlayer(host) { $playerBox.hidden = !host; if (host) host.append($playerBox); else document.body.append($playerBox); }
+function dropPlayer() {
+  stopRange();
+  if (player) { try { player.destroy(); } catch { /* already gone */ } }
+  player = null; playerReady = false; currentVideo = null; captionsOffFor = null;
+}
 /** Fill in title / Part number from the video once YouTube knows it. */
 function learnTitle() {
   const p = parts[currentVideo];
@@ -105,8 +131,7 @@ function route() {
 }
 window.addEventListener("hashchange", render);
 function render() {
-  stopRange();
-  if (player && playerReady) player.pauseVideo();
+  dropPlayer();
   const r = route();
   document.querySelectorAll("[data-nav]").forEach((a) => a.setAttribute("aria-current", a.dataset.nav === r.view ? "page" : "false"));
   $app.replaceChildren();
@@ -121,7 +146,6 @@ function sortedParts() {
   return Object.values(parts).sort((a, b) => (b.part ?? -1) - (a.part ?? -1) || (b.created > a.created ? 1 : -1));
 }
 function renderShelf() {
-  placePlayer(null);
   const link = el("input", { type: "url", placeholder: "https://www.youtube.com/watch?v=…", "aria-label": "YouTube link 视频链接", required: true });
   const num = el("input", { type: "number", min: "1", max: "999", placeholder: "14", "aria-label": "Part number 第几集", class: "num" });
   const err = el("p", { class: "err", role: "alert" });
@@ -168,8 +192,7 @@ function renderPart(p) {
   listEl = el("div", { class: "cards" });
   $app.append(el("section", { class: "page part" }, headEl, host, markBtn, listEl, renderSummary(p),
     el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓"))));
-  placePlayer(host);
-  showVideo(p.video);
+  showVideo(p.video, host);
   renderCards(p);
 }
 function renderPartHead(p) {
@@ -182,10 +205,17 @@ function mark(p) {
   if (!playerReady) return toast("播放器还在加载… Player is loading…");
   const t = player.getCurrentTime();
   player.pauseVideo(); stopRange();
+  p = parts[p.video];
   const c = newCard(t, new Date(), uid());
+  const near = p.cards.find((x) => Math.abs(x.start - c.start) < 1.5);
+  if (near) { // pressed twice at the same spot: show the existing card instead of a duplicate
+    const n = listEl.querySelector('[data-id="' + near.id + '"]');
+    if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.remove("new"); void n.offsetWidth; n.classList.add("new"); }
+    return toast("这里已经有一张卡片了。There's already a card here.");
+  }
   p.cards = sortCards(p.cards.concat(c));
   savePart(p);
-  renderCards(p);
+  renderCards(parts[p.video]);
   const n = listEl.querySelector('[data-id="' + c.id + '"]');
   if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("new"); }
 }
@@ -211,7 +241,17 @@ function cardEl(p, c) {
   };
   const zh = area("zh", "我的中文 My Chinese", "说出或写下中文 Say it in Chinese");
   const range = () => fmtTime(c.start) + "–" + fmtTime(c.end);
-  const setRange = (s, e) => { Object.assign(c, clampRange(s, e)); touch(); node.replaceWith(cardEl(p, c)); };
+  const setRange = (s, e) => {
+    Object.assign(c, clampRange(s, e)); touch();
+    const P = parts[p.video];
+    const order = P.cards.map((x) => x.id).join();
+    P.cards = sortCards(P.cards);
+    if (P.cards.map((x) => x.id).join() !== order) { // moved past another card: redraw in time order, keep Adjust open
+      persist(); renderCards(P);
+      const n = listEl.querySelector('[data-id="' + c.id + '"]');
+      if (n) { n.querySelector("details.adjust").open = true; n.scrollIntoView({ block: "center" }); }
+    } else { const n = cardEl(P, c); node.replaceWith(n); n.querySelector("details.adjust").open = true; }
+  };
   const node = el("article", { class: "card " + (c.mark === "q" ? "q" : "ok"), "data-id": c.id },
     el("div", { class: "card-top" },
       el("button", { class: "time", title: "重播 Replay", onclick: () => playRange(p.video, c.start, c.end, 1) }, fmtTime(c.start)),
@@ -236,7 +276,7 @@ function cardEl(p, c) {
           el("button", { class: "btn sm", onclick: () => { if (playerReady) setRange(c.start, player.getCurrentTime()); } }, "设为结束 Set end here")),
         el("button", { class: "btn sm danger", onclick: () => {
           if (!confirm("删除这张卡片？Delete this card?")) return;
-          deleteCard(p, c.id, new Date()); savePart(p); renderCards(p);
+          deleteCard(p, c.id, new Date()); savePart(p); renderCards(parts[p.video]);
         } }, "删除 Delete"))),
     reviewEl(c));
   return node;
@@ -291,17 +331,17 @@ function renderReview(only) {
   const box = el("div", { class: "rv" });
   $app.append(el("section", { class: "page review-page" }, el("h2", {}, "复习 Review ❓"), sel, host, box));
   if (!pool.length) {
-    placePlayer(null);
     box.append(el("p", { class: "hint" }, "没有 ❓ 句子。No ❓ sentences here — great!"));
     return;
   }
-  placePlayer(host);
   let i = 0, step = 0;
   const show = () => {
     const { p, c } = pool[i];
-    if (currentVideo !== p.video) showVideo(p.video);
+    if (!player) showVideo(p.video, host);
+    else if (currentVideo !== p.video && playerReady) { player.cueVideoById(p.video); currentVideo = p.video; }
     const play = (rate) => playRange(p.video, c.start, c.end, rate);
-    box.replaceChildren(
+    const done = () => box.replaceChildren(el("p", { class: "hint" }, "复习完了！没有剩下的 ❓ 句子。All done — no ❓ left."));
+    box.replaceChildren(...[
       el("p", { class: "rv-count" }, (i + 1) + " / " + pool.length + " · " + (p.part ? "Part " + p.part : "") + " · " + fmtTime(c.start)),
       el("div", { class: "actions big" },
         el("button", { class: "btn primary", onclick: () => play(1) }, "▶ 听 Listen"),
@@ -312,15 +352,22 @@ function renderReview(only) {
         step === 1 ? el("button", { class: "btn wide", onclick: () => { step = 2; show(); } }, "显示中文和批改 Show my Chinese") : null,
       el("div", { class: "actions" },
         el("button", { class: "btn", disabled: i === 0, onclick: () => { i--; step = 0; show(); } }, "← 上一句"),
-        el("button", { class: "btn", onclick: () => { c.mark = "ok"; c.t = new Date().toISOString(); savePart(p); toast("改成 ✅ 了。Marked as got it."); } }, "✅ 懂了 Got it"),
-        el("button", { class: "btn primary", onclick: () => { if (i < pool.length - 1) { i++; step = 0; show(); } else toast("复习完了！All done."); } }, "下一句 Next →")));
+        el("button", { class: "btn", onclick: () => {
+          c.mark = "ok"; c.t = new Date().toISOString(); savePart(p); toast("改成 ✅ 了。Marked as got it.");
+          pool.splice(i, 1); step = 0;
+          if (!pool.length) return done();
+          if (i >= pool.length) i = pool.length - 1;
+          show();
+        } }, "✅ 懂了 Got it"),
+        el("button", { class: "btn primary", onclick: () => { if (i < pool.length - 1) { i++; step = 0; show(); } else toast("这是最后一句。That was the last one."); } }, "下一句 Next →")),
+    ].filter(Boolean));
     const det = box.querySelector("details.review"); if (det) det.open = true;
   };
   show();
 }
 
 // ---------- sync with the private notes repo ----------
-const gh = { token: store.get("token", ""), busy: false, timer: null, again: false };
+const gh = { token: store.get("token", ""), busy: false, timer: null, again: false, fails: 0, gen: 0 };
 function b64e(s) { const b = new TextEncoder().encode(s); let x = ""; for (const c of b) x += String.fromCharCode(c); return btoa(x); }
 function b64d(s) { const x = atob(s.replace(/\s/g, "")); return new TextDecoder().decode(Uint8Array.from(x, (c) => c.charCodeAt(0))); }
 function api(path, method, body) {
@@ -329,73 +376,111 @@ function api(path, method, body) {
     body: body ? JSON.stringify(body) : undefined });
 }
 function syncMsg(m) { const x = document.getElementById("sync-msg"); if (x) x.textContent = m; store.set("syncMsg", m); }
+function isRateLimit(e) { return e instanceof Response && (e.status === 429 || (e.status === 403 && e.headers.get("x-ratelimit-remaining") === "0")); }
 function ghError(e) {
   const s = e && e.status;
+  if (isRateLimit(e)) return "✗ GitHub 暂时限制了请求，稍后自动再试。Rate limited, will retry.";
   if (s === 401) return "✗ 钥匙无效或已过期。Token invalid or expired.";
   if (s === 403 || s === 404) return "✗ 钥匙不能读写 " + NOTES_REPO + "（Contents 要选 Read and write）。";
-  return "✗ 同步失败，稍后会再试。Sync failed, will retry. " + (s || "");
+  if (s) return "✗ 同步失败 (" + s + ")，稍后自动再试。Sync failed, will retry.";
+  return "✗ 连不上 GitHub（网络？），稍后自动再试。Offline? Will retry.";
 }
+/** Token problems need the learner; everything else is retried with a growing wait. */
+function needsLearner(e) { return !!e && !isRateLimit(e) && (e.status === 401 || e.status === 403 || e.status === 404); }
 function pending() { return Object.values(parts).filter((p) => synced[p.video] !== p.updated); }
-function scheduleSync() { if (!gh.token) return; clearTimeout(gh.timer); gh.timer = setTimeout(() => sync(), 3000); }
-async function readRemote(p) {
-  const r = await api("/contents/" + partPath(p) + "?ref=main");
+function scheduleSync(delay) {
+  if (!gh.token) return;
+  clearTimeout(gh.timer);
+  gh.timer = setTimeout(() => sync(), delay || 3000);
+}
+function backoff() { return Math.min(300000, 3000 * 2 ** Math.min(gh.fails, 7)); } // 3 s … 5 min
+async function readRemote(video) {
+  const r = await api("/contents/parts/" + video + ".json?ref=main");
   if (r.status === 404) return null;
   if (!r.ok) throw r;
   const j = await r.json();
-  return { sha: j.sha, part: JSON.parse(b64d(j.content)) };
+  let part;
+  try { part = JSON.parse(b64d(j.content)); } catch { part = null; }
+  const errs = part ? validatePart(part) : ["not valid JSON"];
+  return { sha: j.sha, part: errs.length ? null : part, errs };
 }
-/** Pull every Part from the repo, merge, then push what this browser changed. */
+/** Pull every Part from the repo, merge, then push what this browser changed. One bad file never blocks the rest. */
 async function sync() {
   if (!gh.token) return;
   if (gh.busy) { gh.again = true; return; }
+  const gen = gh.gen;
   gh.busy = true; syncMsg("⏳ 正在同步… Syncing…");
-  let pulled = 0, pushed = 0;
+  let pulled = 0, pushed = 0, fatal = null;
+  const bad = [], failed = [];
   try {
     const r = await api("/contents/parts?ref=main");
     if (!r.ok && r.status !== 404) throw r;
     const files = r.status === 404 ? [] : await r.json();
     for (const f of files) {
+      if (gen !== gh.gen) break;
       if (!/^[\w-]{11}\.json$/.test(f.name)) continue;
       const video = f.name.slice(0, 11);
       if (shas[video] === f.sha && parts[video]) continue;
-      const remote = await readRemote({ video });
+      const remote = await readRemote(video);
       if (!remote) continue;
+      if (!remote.part) { bad.push(f.name); continue; }
       const local = parts[video];
       const wasPending = local && synced[video] !== local.updated;
       const merged = local ? mergeParts(local, remote.part) : remote.part;
       parts[video] = merged; shas[video] = remote.sha;
-      if (!wasPending) synced[video] = merged.updated;
+      // Not pending: we now equal the repo — unless the merge kept something the repo lacks (then push it back).
+      if (!wasPending) synced[video] = JSON.stringify(merged) === JSON.stringify(remote.part) ? merged.updated : "";
       pulled++;
     }
     for (const p of pending()) {
-      const remote = await readRemote(p);
-      const merged = remote ? mergeParts(p, remote.part) : p;
-      const put = await api("/contents/" + partPath(p), "PUT", { branch: "main",
-        message: "Practice " + (merged.part ? "Part " + merged.part : merged.video) + " (" + merged.cards.length + " cards)",
-        content: b64e(JSON.stringify(merged, null, 2) + "\n"), sha: remote ? remote.sha : undefined });
-      if (!put.ok) throw put;
-      const j = await put.json();
-      parts[p.video] = merged; shas[p.video] = j.content.sha; synced[p.video] = merged.updated;
-      pushed++;
+      if (gen !== gh.gen) break;
+      const before = p.updated;
+      try {
+        const remote = await readRemote(p.video);
+        if (remote && !remote.part) { bad.push(p.video + ".json"); continue; }
+        const merged = remote ? mergeParts(p, remote.part) : { ...p, cards: p.cards.slice() };
+        const put = await api("/contents/" + partPath(p), "PUT", { branch: "main",
+          message: "Practice " + (merged.part ? "Part " + merged.part : merged.video) + " (" + merged.cards.length + " cards)",
+          content: b64e(JSON.stringify(merged, null, 2) + "\n"), sha: remote ? remote.sha : undefined });
+        if (!put.ok) throw put;
+        const j = await put.json();
+        shas[p.video] = j.content.sha;
+        if (parts[p.video] === p && p.updated === before) { parts[p.video] = merged; synced[p.video] = merged.updated; }
+        else { parts[p.video] = mergeParts(parts[p.video], merged); gh.again = true; } // edited while uploading: stays pending
+        pushed++;
+      } catch (e) {
+        if (needsLearner(e)) throw e;
+        if (e instanceof Response && (e.status === 409 || e.status === 422)) gh.again = true; // someone pushed meanwhile
+        failed.push(e);
+      }
     }
-    persist();
-    syncMsg("✓ 已同步 Synced " + new Date().toTimeString().slice(0, 5) + (pulled || pushed ? "（下载 " + pulled + "，上传 " + pushed + "）" : ""));
-    if (pulled) refreshAfterPull();
-  } catch (e) {
-    persist();
-    if (e && (e.status === 409 || e.status === 422) && !gh.retried) { gh.retried = true; gh.busy = false; return sync(); }
-    syncMsg(e instanceof Response ? ghError(e) : "✗ 同步失败（网络？）Sync failed. " + (e && e.message || ""));
-    if (!(e && (e.status === 401 || e.status === 403 || e.status === 404))) scheduleSync();
+  } catch (e) { fatal = e; }
+  persist();
+  gh.busy = false;
+  if (gen !== gh.gen) return;
+  const err = fatal || failed[0];
+  if (err) {
+    syncMsg(ghError(err));
+    if (!needsLearner(err)) { gh.fails++; scheduleSync(backoff()); }
+  } else {
+    gh.fails = 0;
+    syncMsg("✓ 已同步 Synced " + new Date().toTimeString().slice(0, 5) + (pulled || pushed ? "（下载 " + pulled + "，上传 " + pushed + "）" : "")
+      + (bad.length ? " · ⚠️ 格式有问题的文件已跳过 skipped broken file: " + bad.join(", ") : ""));
+    if (gh.again) { gh.again = false; scheduleSync(); }
   }
-  gh.retried = false; gh.busy = false;
-  if (gh.again) { gh.again = false; scheduleSync(); }
+  if (pulled) refreshAfterPull();
 }
-/** After pulling, redraw unless the learner is typing (then only add AI reviews quietly on next render). */
+/** After pulling: redraw, but never under the learner's fingers (typing) and never restart the video. */
 function refreshAfterPull() {
-  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
   const r = route();
-  if (r.view === "shelf") render();
-  else if (r.view === "part" && parts[r.video] && !typing) { renderPartHead(parts[r.video]); renderCards(parts[r.video]); }
+  if (r.view === "shelf") return render();
+  if (r.view !== "part" || !parts[r.video]) return;
+  if (!listEl || !listEl.isConnected) return render(); // the Part arrived after the page was opened
+  if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "")) return;
+  const p = parts[r.video];
+  renderPartHead(p); renderCards(p);
+  const s = renderSummary(p), old = document.querySelector(".summary");
+  if (old) old.replaceWith(s || ""); else if (s) listEl.after(s);
 }
 function renderSyncPanel() {
   const box = el("section", { class: "page sync" });
@@ -404,28 +489,32 @@ function renderSyncPanel() {
     box.replaceChildren(el("h2", {}, "☁ 同步 Sync"), ...(
       gh.token ? [
         el("p", {}, "已连接 Connected → ", el("code", {}, NOTES_REPO), "（私密仓库，别人看不到 private）"),
-        el("p", { id: "sync-msg", class: "hint" }, store.get("syncMsg", "")),
+        el("p", { id: "sync-msg", class: "hint", role: "status" }, store.get("syncMsg", "")),
         el("div", { class: "row" },
-          el("button", { class: "btn", onclick: () => sync() }, "↻ 现在同步 Sync now"),
+          el("button", { class: "btn", onclick: () => { gh.fails = 0; sync(); } }, "↻ 现在同步 Sync now"),
           el("button", { class: "btn danger", onclick: () => {
             if (!confirm("在这个浏览器里删掉钥匙？练习不会被删除。Forget the token on this device?")) return;
-            gh.token = ""; store.set("token", ""); draw();
+            gh.gen++; clearTimeout(gh.timer); gh.token = ""; store.set("token", ""); store.set("syncMsg", ""); draw();
           } }, "🔑 删掉钥匙 Forget token")),
       ] : [
         el("p", { class: "hint" }, "现在只存在这个浏览器。粘贴 GitHub 钥匙后，会同步到私密仓库 ", el("code", {}, NOTES_REPO),
           "，手机和电脑都能用，Mac 上的 AI 也能批改。钥匙只保存在这个浏览器里。"),
         el("p", { class: "hint" }, "新建钥匙：", el("a", { href: "https://github.com/settings/personal-access-tokens/new", target: "_blank", rel: "noopener" },
           "GitHub → Fine-grained token"), " → Repository access 只选 daily-reading-notes → Permissions: Contents = Read and write。"),
+        el("p", { id: "sync-msg", class: "hint", role: "status" }),
         el("div", { class: "row" }, tokenIn, el("button", { class: "btn primary", onclick: async () => {
-          const t = tokenIn.value.trim(); if (!t) { toast("先粘贴钥匙。Paste the token first."); return; }
+          const t = tokenIn.value.trim(); if (!t) { syncMsg("先粘贴钥匙。Paste the token first."); tokenIn.focus(); return; }
           gh.token = t; syncMsg("⏳ 检查钥匙… Checking…");
           try {
             const r = await api("");
             if (!r.ok) throw r;
-            const j = await r.json();
-            if (j.permissions && !j.permissions.push) throw { status: 403 };
-            store.set("token", t); draw(); sync();
-          } catch (e) { gh.token = ""; toast(ghError(e)); }
+            // Read access is proven here; missing write access shows a clear message on the first upload.
+            gh.fails = 0; store.set("token", t); store.set("syncMsg", ""); draw(); sync();
+          } catch (e) {
+            gh.token = "";
+            syncMsg(e && e.status ? ghError(e).replace("稍后自动再试", "请再试一次").replace("will retry", "try again")
+              : "✗ 连不上 GitHub（网络？），请再试一次。Offline? Try again.");
+          }
         } }, "连接 Connect")),
       ]));
   };
@@ -435,5 +524,6 @@ function renderSyncPanel() {
 
 // ---------- start ----------
 render();
+if (storageBroken) toast("⚠️ 本机保存的数据有一部分读不出来，已另存一份备份。Some saved data was unreadable; a backup copy was kept.");
 if (gh.token) sync();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });

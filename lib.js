@@ -73,8 +73,13 @@ export function deleteCard(p, id, now) {
   p.updated = now.toISOString();
 }
 
+/** Parse an ISO time; missing/bad → -Infinity. @param {string|undefined} s */
+function ms(s) { const n = Date.parse(s || ""); return Number.isNaN(n) ? -Infinity : n; }
 /** @param {string|undefined} a @param {string|undefined} b  true if a is newer than b */
-function newer(a, b) { return (a || "") > (b || ""); }
+function newer(a, b) { return ms(a) > ms(b); }
+/** Pick the AI's review/summary: one that exists beats a missing one, then the newer `t`.
+ * @template {{t?: string}} T @param {T|undefined} x @param {T|undefined} y @returns {T|undefined} */
+function pickAI(x, y) { if (!x) return y; if (!y) return x; return newer(y.t, x.t) ? y : x; }
 
 /**
  * Merge two copies of the same Part (this browser vs the repo). Per card the newer edit (`t`) wins; deletions win
@@ -93,17 +98,20 @@ export function mergeParts(a, b) {
     const prev = byId.get(c.id);
     if (!prev) { byId.set(c.id, c); continue; }
     const win = newer(c.t, prev.t) ? c : prev, lose = win === c ? prev : c;
-    const review = newer(lose.review?.t, win.review?.t) ? lose.review : win.review;
+    const review = pickAI(win.review, lose.review);
     byId.set(c.id, review ? { ...win, review } : { ...win });
   }
   const cards = sortCards([...byId.values()].filter((c) => !(deleted[c.id] && !newer(c.t, deleted[c.id]))));
-  const summary = newer(b.summary?.t, a.summary?.t) ? b.summary : a.summary;
+  const summary = pickAI(a.summary, b.summary);
   /** @type {Part} */
   const out = { ...base, cards, updated: newer(b.updated, a.updated) ? b.updated : a.updated };
   if (Object.keys(deleted).length) out.deleted = deleted; else delete out.deleted;
   if (summary) out.summary = summary; else delete out.summary;
   return out;
 }
+
+/** @param {unknown} s */
+function isIso(s) { return typeof s === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$/.test(s) && !Number.isNaN(Date.parse(s)); }
 
 /** Counts for the shelf. @param {Part} p */
 export function partStats(p) {
@@ -134,12 +142,23 @@ export function validatePart(p) {
     if (!(typeof c.start === "number" && typeof c.end === "number" && c.end > c.start && c.start >= 0)) errs.push(w + " start/end invalid");
     if (typeof c.en !== "string" || typeof c.zh !== "string") errs.push(w + " en/zh must be strings");
     if (c.mark !== "ok" && c.mark !== "q") errs.push(w + ".mark must be ok or q");
+    if (!isIso(c.t)) errs.push(w + ".t must be an ISO time like 2026-11-14T09:30:00Z");
     if (c.review != null) {
       if (typeof c.review !== "object") errs.push(w + ".review must be an object");
-      else if (c.review.verdict && !["ok", "close", "wrong"].includes(c.review.verdict)) errs.push(w + ".review.verdict must be ok, close or wrong");
+      else {
+        if (typeof c.review.ref !== "string" || !c.review.ref) errs.push(w + ".review.ref missing");
+        if (!isIso(c.review.t)) errs.push(w + ".review.t must be an ISO time like 2026-11-14T09:30:00Z");
+        if (c.review.verdict && !["ok", "close", "wrong"].includes(c.review.verdict)) errs.push(w + ".review.verdict must be ok, close or wrong");
+      }
     }
   });
-  if (p.summary != null && (typeof p.summary !== "object" || (p.summary.patterns && !Array.isArray(p.summary.patterns))))
-    errs.push("summary.patterns must be an array");
+  if (p.summary != null) {
+    if (typeof p.summary !== "object") errs.push("summary must be an object");
+    else {
+      if (p.summary.patterns && !Array.isArray(p.summary.patterns)) errs.push("summary.patterns must be an array");
+      if (!isIso(p.summary.t)) errs.push("summary.t must be an ISO time like 2026-11-14T09:30:00Z");
+    }
+  }
+  if (!isIso(p.updated)) errs.push("updated must be an ISO time like 2026-11-14T09:30:00Z");
   return errs;
 }

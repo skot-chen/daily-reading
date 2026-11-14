@@ -66,6 +66,35 @@ test("merge: summary taken from the newer side", () => {
   assert.equal(mergeParts(b, a).summary.stuck, "连读");
 });
 
+test("merge: an AI review/summary without t is kept, not dropped", () => {
+  const a = newPart("hUVab77Hrao", 14, "", T("00"));
+  a.cards = [{ ...newCard(5, T("01"), "a"), zh: "新", t: T("40").toISOString() }];
+  const b = structuredClone(a);
+  b.cards[0] = { ...b.cards[0], zh: "旧", t: T("10").toISOString(), review: { ref: "参考" } };
+  b.summary = { stuck: "长句" };
+  const m = mergeParts(a, b);
+  assert.equal(m.cards[0].zh, "新");
+  assert.equal(m.cards[0].review.ref, "参考");
+  assert.equal(m.summary.stuck, "长句");
+});
+
+test("merge: times compare as dates, not text", () => {
+  const a = newPart("hUVab77Hrao", 14, "", T("00"));
+  a.cards = [{ ...newCard(5, T("01"), "a"), zh: "旧", t: "2026-11-14T10:00:30.000Z" }];
+  const b = structuredClone(a);
+  b.cards[0] = { ...b.cards[0], zh: "新", t: "2026-11-14T18:01:00+08:00" }; // = 10:01:00Z, newer
+  assert.equal(mergeParts(a, b).cards[0].zh, "新");
+});
+
+test("merge: a card edited after its deletion comes back", () => {
+  const a = newPart("hUVab77Hrao", 14, "", T("00"));
+  a.cards = [newCard(5, T("01"), "x")];
+  const b = structuredClone(a);
+  deleteCard(b, "x", T("05"));
+  a.cards[0].t = T("09").toISOString();
+  assert.deepEqual(mergeParts(a, b).cards.map((c) => c.id), ["x"]);
+});
+
 test("partStats", () => {
   const p = newPart("hUVab77Hrao", 14, "", T("00"));
   p.cards = [newCard(1, T("00"), "a"), { ...newCard(9, T("00"), "b"), mark: "ok", review: { ref: "r" } }];
@@ -76,10 +105,17 @@ test("validatePart", () => {
   const p = newPart("hUVab77Hrao", 14, "", T("00"));
   p.cards = [newCard(5, T("00"), "a")];
   assert.deepEqual(validatePart(p), []);
+  p.cards[0].review = { ref: "r", verdict: "ok", t: "2026-11-14T09:30:00Z" };
+  p.summary = { stuck: "x", patterns: [], t: T("05").toISOString() };
+  assert.deepEqual(validatePart(p), []);
   p.cards.push({ ...p.cards[0], mark: "maybe", review: { verdict: "great" } });
+  delete p.summary.t;
   const errs = validatePart(p);
   assert.ok(errs.some((e) => e.includes("duplicate")));
   assert.ok(errs.some((e) => e.includes("mark")));
   assert.ok(errs.some((e) => e.includes("verdict")));
-  assert.deepEqual(validatePart({ version: 1, video: "bad", part: 0, cards: [] }).length, 2);
+  assert.ok(errs.some((e) => e.includes("review.ref")));
+  assert.ok(errs.some((e) => e.includes("review.t")));
+  assert.ok(errs.some((e) => e.includes("summary.t")));
+  assert.deepEqual(validatePart({ version: 1, video: "bad", part: 0, cards: [], updated: T("00").toISOString() }).length, 2);
 });
