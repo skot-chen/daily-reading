@@ -178,7 +178,9 @@ function renderShelf() {
         return el("li", {}, el("a", { href: "#/v/" + p.video },
           el("span", { class: "pn" }, p.part ? "Part " + p.part : "Part ?"),
           el("span", { class: "pt" }, shortTitle(p.title) || p.video),
-          el("span", { class: "ps" }, s.cards + " 句 sentences · ", el("b", { class: "red" }, s.q + " ❓"), " · " + s.reviewed + " 已批改 reviewed · " + p.created)));
+          el("span", { class: "ps" }, s.cards + " 句 sentences · ", el("b", { class: "red" }, s.q + " ❓"), " · " + s.reviewed + " 已批改 reviewed · " + p.created)),
+          el("button", { class: "delbtn", "aria-label": "从书架删除这一集 Remove this part from the shelf", title: "从书架删除这一集 Remove part",
+            onclick: () => removePart(p) }, "✕"));
       })) : el("p", { class: "hint" }, gh.token ? "还没有内容。Nothing here yet — start a new part above." :
         "还没有内容。这个浏览器里的练习只存在本机；到页面底部连接 GitHub 就能同步到其他设备。")),
     renderSyncPanel());
@@ -213,7 +215,7 @@ function renderPart(p) {
       el("div", { class: "row tools" }, back, theater)),
     el("div", { class: "notes" }, listEl, renderSummary(p),
       el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓")),
-      el("p", { class: "back" }, el("button", { class: "btn sm danger", onclick: () => removePart(p) }, "删除这一集 Delete this part"))));
+      el("p", { class: "back" }, el("button", { class: "btn sm danger", onclick: () => clearCards(p) }, "清空这一集的卡片 Clear all cards"))));
   $app.append(section);
   showVideo(p.video, host);
   renderCards(p);
@@ -282,15 +284,29 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
   if (k === "m") toggleRec(parts[r.video]); else if (rec) endRec();
 });
-/** Delete a whole Part (here and, with sync, in the notes repo). */
+/** Remove every card of a Part but keep the Part (video, number, AI summary). */
+function clearCards(p) {
+  const P = parts[p.video];
+  const n = P ? P.cards.length : 0;
+  if (!n) return toast("这一集还没有卡片。No cards to clear.");
+  if (!confirm("清空这一集的 " + n + " 张卡片？视频和这一集会保留。删除的卡片找不回来。\n"
+    + "Delete all " + n + " cards? The video and this part stay. This can't be undone.")) return;
+  const now = new Date();
+  if (rec && rec.video === p.video) { rec = null; clearInterval(recTimer); drawRecBtn(); }
+  for (const c of P.cards.slice()) deleteCard(P, c.id, now);
+  savePart(P); renderCards(parts[p.video]);
+  toast("已清空 " + n + " 张卡片。Cleared.");
+}
+/** Delete a whole Part from the shelf (here and, with sync, in the notes repo). */
 function removePart(p) {
   const n = parts[p.video] ? parts[p.video].cards.length : 0;
-  if (!confirm("删除这一集和它的 " + n + " 张卡片？删除后找不回来。\nDelete this part and its " + n + " cards? This can't be undone.")) return;
+  if (!confirm("从书架删除「" + (p.part ? "Part " + p.part : shortTitle(p.title) || p.video) + "」和它的 " + n + " 张卡片？删除后找不回来。\n"
+    + "Remove this part and its " + n + " cards from the shelf? This can't be undone.")) return;
   delete parts[p.video]; delete synced[p.video];
   deletedParts[p.video] = new Date().toISOString();
   store.set("deletedParts", deletedParts);
   persist(); scheduleSync();
-  location.hash = "#/";
+  if (route().view === "shelf") render(); else location.hash = "#/";
   toast("已删除。Deleted.");
 }
 function renderCards(p) {

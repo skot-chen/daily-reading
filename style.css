@@ -200,3 +200,6 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
 .ask-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .ask-btns .btn { flex: 1 1 120px; display: flex; flex-direction: column; align-items: center; }
 .ask-btns .btn small { font-size: 12px; opacity: .8; }
+.parts li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.parts li > a { flex: 1; min-width: 0; border-bottom: 0; }
+.parts li > .delbtn { flex: none; }
