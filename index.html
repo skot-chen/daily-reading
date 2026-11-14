@@ -3,11 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Daily Reading</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231f3b2d'/><path d='M8 9h7a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H8zM24 9h-5a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h5z' fill='%23d4b35c'/></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main id="app"></main>
+<header class="cover">
+  <div class="cover-in">
+    <a class="brand" href="#/">Daily Reading<small>听 · 标 · 说 · 复习</small></a>
+    <nav>
+      <a href="#/" data-nav="shelf">书架 Shelf</a>
+      <a href="#/review" data-nav="review">复习 Review</a>
+    </nav>
+  </div>
+</header>
+<main id="app" class="wrap"></main>
+<div id="player-box" hidden><div id="player"></div></div>
+<div id="toast" role="status" hidden></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@ Listening + translation practice for *Clear English with Eric — The Wizard of 
 Static site, zero dependencies (keep it that way): `index.html`, `style.css`, `app.js` (page), `lib.js` (pure logic,
 also imported by tests). YouTube IFrame API for the player, GitHub Contents API for sync. Hosted on GitHub Pages
 from public repo `skot-chen/daily-reading`; the learner's data lives in PRIVATE repo `skot-chen/daily-reading-notes`
-(one file per Part: `parts/part-<N>.json`, format in SPEC.md). GitHub account for this workspace: skot-chen only.
+(one file per Part: `parts/<YouTube id>.json`, format in SPEC.md + AGENTS.md). GitHub account for this workspace: skot-chen only.
 
 ## Commands
 - `npm run check` — syntax check + build `_site/` + unit tests (node:test, `test/*.test.js`). Must stay green.

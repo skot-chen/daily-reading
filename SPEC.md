@@ -41,7 +41,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 ### F5 Sync to the private repo (optional, like Daily Words)
 1. Without a token everything works locally (this browser only); the page says so in one line.
 2. Pasting a fine-grained GitHub token (Contents read/write on `skot-chen/daily-reading-notes` only) is checked once and stored only in this browser; a "forget token" button removes it.
-3. Edits sync automatically a few seconds after I stop typing, one file per Part (`parts/part-14.json`); status line shows ✓ time or a clear Chinese error.
+3. Edits sync automatically a few seconds after I stop typing, one file per Part (`parts/<YouTube id>.json`); status line shows ✓ time or a clear Chinese error.
 4. On another device with the token, opening the site loads all Parts from the repo; newer edits win per card.
 5. Visitors without the token see an empty notebook and none of my content (the data repo is private).
 
@@ -62,7 +62,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 - No AI calls from the page (no API key, no cost). No full subtitles stored (copyright) — only the sentences I mark.
 - No accounts/login beyond the GitHub token. No other video series UI (works with any YouTube link, but no special features).
 
-## Data model (private repo `daily-reading-notes`, one file per Part: `parts/part-<N>.json`)
+## Data model (private repo `daily-reading-notes`, one file per Part: `parts/<YouTube id>.json`, the `part` field holds N)
 ```json
 { "version": 1, "part": 14, "video": "hUVab77Hrao", "title": "Learn English with a Classic Book | ... | Part 14",
   "created": "2026-11-14", "updated": "2026-11-14T09:12:00Z",
