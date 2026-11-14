@@ -190,3 +190,13 @@ button.range:hover, button.range[aria-expanded=true] { border-color: var(--muted
 .edit-time { margin: 6px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
 .edit-time .hint { margin: 4px 0 0; }
 .markbtn { margin-left: auto; }
+
+/* choice dialog */
+dialog.ask { border: 2px solid var(--gold); border-radius: 8px; background: var(--paper); color: var(--ink); padding: 20px 22px;
+  max-width: min(460px, calc(100vw - 32px)); box-shadow: 0 10px 40px #0006; }
+dialog.ask::backdrop { background: #0007; }
+dialog.ask h3 { color: var(--red); margin-bottom: 10px; }
+dialog.ask p { margin: 4px 0; font-size: 15px; }
+.ask-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.ask-btns .btn { flex: 1 1 120px; display: flex; flex-direction: column; align-items: center; }
+.ask-btns .btn small { font-size: 12px; opacity: .8; }

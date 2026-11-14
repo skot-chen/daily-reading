@@ -297,6 +297,26 @@ function renderCards(p) {
   listEl.replaceChildren(...(p.cards.length ? p.cards.map((c) => cardEl(p, c)) :
     [el("p", { class: "hint empty" }, "播放视频，不看字幕听。听不懂的地方点「标记 Mark」，这里会出现一张句子卡片。")]));
 }
+/**
+ * A small in-page dialog with several choices (confirm() only has two). Esc / backdrop = "cancel".
+ * @param {{title: string, body: (string|null)[], buttons: {value: string, label: string, sub?: string, primary?: boolean}[]}} o
+ * @returns {Promise<string>}
+ */
+function ask(o) {
+  return new Promise((resolve) => {
+    const d = el("dialog", { class: "ask", "aria-labelledby": "ask-title" },
+      el("h3", { id: "ask-title" }, o.title),
+      o.body.filter(Boolean).map((line) => el("p", {}, line)),
+      el("div", { class: "ask-btns" }, o.buttons.map((b) => el("button", {
+        class: "btn" + (b.primary ? " primary" : ""), value: b.value,
+        onclick: () => { d.close(b.value); } }, b.label, b.sub ? el("small", {}, b.sub) : null))));
+    d.addEventListener("close", () => { resolve(d.returnValue || "cancel"); d.remove(); });
+    d.addEventListener("click", (e) => { if (e.target === d) d.close("cancel"); });
+    document.body.append(d);
+    d.showModal();
+    d.querySelector(".btn.primary")?.focus();
+  });
+}
 /** One Start/End row: a free time field + ±1 s + "use the video's current time". */
 function adjRow(label, value, set) {
   const err = el("span", { class: "err", role: "alert" });
@@ -326,20 +346,53 @@ function cardEl(p, c) {
   const zh = area("zh", "我的中文 My Chinese", "说出或写下中文 Say it in Chinese");
   const range = () => fmtTime(c.start) + "–" + fmtTime(c.end);
   const openEdit = (n) => { const b = n.querySelector(".edit-time"); if (b) { b.hidden = false; n.querySelector("button.range").setAttribute("aria-expanded", "true"); } };
-  const setRange = (s, e) => {
-    Object.assign(c, clampRange(s, e)); touch();
+  const setRange = async (s, e) => {
+    const next = clampRange(s, e);
+    const overlapsOld = next.start < c.end && next.end > c.start;
+    if (!overlapsOld) {
+      // The new time is a different place in the video: ask instead of silently moving the card.
+      const others = parts[p.video].cards.filter((x) => x.id !== c.id && next.start < x.end && next.end > x.start);
+      const choice = await ask({
+        title: "新的时间不在这张卡片原来的区间里",
+        body: [
+          "原来 Before：" + fmtTime(c.start, true) + "–" + fmtTime(c.end, true),
+          "新的 New：" + fmtTime(next.start, true) + "–" + fmtTime(next.end, true),
+          others.length ? "⚠️ 和已有的卡片重叠 Overlaps: " + others.map((x) => fmtTime(x.start) + "–" + fmtTime(x.end)).join("，") : null,
+          "要怎么做？ What should happen?",
+        ],
+        buttons: [
+          { value: "new", label: "新建一张卡片", sub: "New card · 这张不变", primary: true },
+          { value: "move", label: "移动这张卡片", sub: "Move · 英文和中文跟着走" },
+          { value: "cancel", label: "取消", sub: "Cancel" },
+        ],
+      });
+      if (choice === "cancel") { const n = cardEl(parts[p.video], c); node.replaceWith(n); openEdit(n); return; }
+      if (choice === "new") {
+        const P0 = parts[p.video];
+        const nc = { ...newCard(next.start, new Date(), uid(), 0), ...next };
+        P0.cards = sortCards(P0.cards.concat(nc));
+        savePart(P0); renderCards(parts[p.video]);
+        const n = listEl.querySelector('[data-id="' + nc.id + '"]');
+        if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("new"); }
+        toast("新建了 " + fmtTime(nc.start) + "–" + fmtTime(nc.end) + "，原来的卡片不变。New card added.");
+        return;
+      }
+    }
+    Object.assign(c, next); touch();
     const P = parts[p.video];
     const order = P.cards.map((x) => x.id).join();
     P.cards = sortCards(P.cards);
     if (P.cards.map((x) => x.id).join() !== order) { // moved past another card: redraw in time order, keep Adjust open
       persist(); renderCards(P);
       const n = listEl.querySelector('[data-id="' + c.id + '"]');
-      if (n) { openEdit(n); n.scrollIntoView({ block: "center" }); }
+      if (n) { openEdit(n); n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("new"); }
+      toast("卡片移到了 " + fmtTime(c.start) + "，按时间排好了。Card moved.");
     } else { const n = cardEl(P, c); node.replaceWith(n); openEdit(n); }
   };
   const editBox = el("div", { class: "edit-time", hidden: true },
-    adjRow("开始 Start", c.start, (v) => setRange(v, Math.max(c.end, v + 0.5))),
-    adjRow("结束 End", c.end, (v) => setRange(c.start, v)),
+    // Moving one edge past the other keeps the sentence length (a jump to another place in the video).
+    adjRow("开始 Start", c.start, (v) => setRange(v, v >= c.end ? v + (c.end - c.start) : c.end)),
+    adjRow("结束 End", c.end, (v) => setRange(v <= c.start ? v - (c.end - c.start) : c.start, v)),
     el("p", { class: "hint" }, "直接改时间（如 5:28 或 5:28.5），或者把视频播到想要的位置，点「用现在的时间」。"));
   const rangeBtn = el("button", { class: "range", "aria-expanded": "false", title: "修改时间 Edit time",
     onclick: () => { const open = editBox.hidden; editBox.hidden = !open; rangeBtn.setAttribute("aria-expanded", String(open));

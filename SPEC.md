@@ -26,6 +26,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 1. **● 开始 Start** (or `M`) creates a card starting now (minus an optional lead-in of 0–10 s, default 2, remembered); the video keeps playing and the button turns into **■ 结束 End** showing the running range.
 2. **结束 End** (or `M`/`E`) sets the card's end to the current time and pauses the video. The card is exactly the Start→End range.
 3. Each card shows its range (`00:03–00:08 ✎`); clicking it opens time editing: free time fields (`5:28`, `5:28.5`, `328`; bad input shows a hint), ±1 s, **用现在的时间 Now**. Cards stay sorted by time.
+   - An edit that still overlaps the old range applies directly. An edit that no longer overlaps it opens a dialog (old vs new range, any overlap with other cards) with **新建一张卡片 New card** (default, old card unchanged) / **移动这张卡片 Move** / **取消 Cancel**. Moving one edge past the other keeps the sentence length.
 4. Each card has a visible ✕ delete (with confirm). **删除这一集 Delete this part** removes a whole Part (with confirm), also from the notes repo on next sync.
 5. Wide screens (≥ 1100 px): video left and stays in view, cards right; **⤢ 大视频 Big video** puts a large video on top (Start/End always visible), remembered.
 
