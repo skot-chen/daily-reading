@@ -10,7 +10,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 
 ## Core loop
 1. Open the site, paste the Part's YouTube link (or pick a Part already started).
-2. Listen without subtitles. Didn't understand? Tap **标记 Mark** → the video pauses and a sentence card is created at that moment.
+2. Listen without subtitles. Hard sentence? Tap **开始 Start**; when it ends tap **结束 End** → that range becomes a sentence card.
 3. In the card: paste the English (copied from YouTube's transcript), say/type the Chinese, mark ✅ (got it) or ❓ (not sure). **重播 Replay** plays just that bit again.
 4. Done → it syncs to the private notes repo. Tell the Mac AI "批改 Part N" → the AI writes reviews into the repo and a Markdown note into Obsidian.
 5. On the road: **复习 Review** on the phone — replay each ❓ sentence, guess, then reveal English → my Chinese → AI review.
@@ -22,13 +22,12 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 2. The Part list (home) shows each Part with number, date, and counts: sentences / ❓ / reviewed by AI.
 3. Reopening a Part loads the same video and all its cards.
 
-### F2 Mark while listening
-1. Pressing **标记 Mark** (or the `M` key on desktop) pauses the video and adds a card with start time = current time − 4 s (min 0) and end = current time + 1 s.
-2. A card shows its time (mm:ss); cards are sorted by time.
-3. Each card has buttons to nudge start/end by ±1 s, a free time field for start and end (`5:28`, `5:28.5`, `328`; bad input shows a hint), and **用现在的时间 Now** (= current video time).
-4. **到这里结束 End here** (or `E`) sets the newest card's end to the current video time, so a sentence can be any length: Mark → keep playing → End here.
-5. A rewind select (2–20 s, remembered) sets how far back a new card starts.
-6. Wide screens (≥ 1100 px): video left and stays in view, cards right; **⤢ 大视频 Big video** puts a large video on top (as tall as the window allows, Mark always visible), remembered.
+### F2 Mark while listening (Start → End)
+1. **● 开始 Start** (or `M`) creates a card starting now (minus an optional lead-in of 0–10 s, default 2, remembered); the video keeps playing and the button turns into **■ 结束 End** showing the running range.
+2. **结束 End** (or `M`/`E`) sets the card's end to the current time and pauses the video. The card is exactly the Start→End range.
+3. Each card shows its range (`00:03–00:08 ✎`); clicking it opens time editing: free time fields (`5:28`, `5:28.5`, `328`; bad input shows a hint), ±1 s, **用现在的时间 Now**. Cards stay sorted by time.
+4. Each card has a visible ✕ delete (with confirm). **删除这一集 Delete this part** removes a whole Part (with confirm), also from the notes repo on next sync.
+5. Wide screens (≥ 1100 px): video left and stays in view, cards right; **⤢ 大视频 Big video** puts a large video on top (Start/End always visible), remembered.
 
 ### F3 Translate a card
 1. Card has an English box (paste) and a Chinese box. Text is saved automatically (no Save button) and survives reload.
@@ -39,7 +38,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 ### F4 Replay
 1. **重播 Replay** seeks to start and plays until end, then pauses.
 2. **慢放 0.75×** plays the same range at 0.75 speed.
-3. Clicking a card's time does the same as Replay.
+3. Clicking a card's start time does the same as Replay.
 
 ### F5 Sync to the private repo (optional, like Daily Words)
 1. Without a token everything works locally (this browser only); the page says so in one line.

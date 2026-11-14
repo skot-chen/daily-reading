@@ -29,5 +29,5 @@
 - sync() lives in app.js (DOM/fetch) and has no unit tests; logic it relies on (mergeParts, validatePart) is tested.
 - If the AI pushes with a newer `updated` while a local Part-number edit is pending, the AI's `part`/`title` win (rare).
 - Fixed after review: edits during upload, broken remote file, storage full, stale objects (savePart merges), player rebuilt per view, review/summary without t, backoff + rate limit, "null" in review mode, re-sort after Adjust, double Mark, 44px targets.
-- No way to delete a whole Part from the shelf yet.
+- Whole-Part delete exists on the Part page (not on the shelf list).
 - Real sync not tested end-to-end against GitHub from this machine (no token here by design).

@@ -171,3 +171,22 @@ body.wide .wrap, body.wide .cover-in { max-width: 1680px; }
   .theater-btn { display: inline-flex; align-items: center; }
   .theater-btn[aria-pressed=true] { background: var(--cover); color: var(--gold); border-color: var(--cover); }
 }
+
+/* Start / End recording button */
+.btn.mark.recording { background: var(--paper); color: var(--red); border: 3px solid var(--red); animation: pulse-border 1.2s infinite; }
+.btn.mark.recording small { opacity: 1; }
+@keyframes pulse-border { 50% { border-color: var(--gold); } }
+.steps { margin: 0 0 10px; padding-left: 22px; color: var(--muted); font-size: 14px; }
+.steps b { color: var(--ink); }
+.card.recording { background-color: color-mix(in srgb, var(--red-soft) 50%, transparent); }
+
+/* editable time range + delete on each card */
+button.range { background: none; border: 1px dashed transparent; border-radius: 6px; color: var(--muted); font-size: 13px;
+  padding: 4px 8px; min-height: 44px; cursor: pointer; }
+button.range:hover, button.range[aria-expanded=true] { border-color: var(--muted); color: var(--ink); }
+.delbtn { background: none; border: 1px solid transparent; border-radius: 6px; color: var(--muted); font-size: 18px;
+  min-width: 44px; min-height: 44px; cursor: pointer; }
+.delbtn:hover { color: var(--red); border-color: var(--red); }
+.edit-time { margin: 6px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+.edit-time .hint { margin: 4px 0 0; }
+.markbtn { margin-left: auto; }
