@@ -71,17 +71,33 @@ const ytReady = new Promise((resolve) => {
   document.head.append(s);
 });
 /** Create a fresh player inside `host` (moving an iframe in the page reloads it and breaks the API link). */
-async function showVideo(video, host) {
+let playerGen = 0, playerWatch = null;
+async function showVideo(video, host, attempt = 1) {
   dropPlayer();
+  const gen = ++playerGen;
+  host.querySelectorAll(".player-box, .player-retry").forEach((n) => n.remove());
   const box = el("div", { class: "player-box" }, el("div", {}));
   host.append(box);
   await ytReady;
-  if (!box.isConnected) return; // the learner already left this page
+  if (!box.isConnected || gen !== playerGen) return; // the learner already left this page
   currentVideo = video;
+  // Sometimes YouTube never answers (slow network, a stale page). Rebuild once by itself, then offer a button.
+  clearTimeout(playerWatch);
+  playerWatch = setTimeout(() => {
+    if (playerReady || gen !== playerGen || !box.isConnected) return;
+    if (attempt < 2) { showVideo(video, host, attempt + 1); return; }
+    host.append(el("p", { class: "player-retry" }, "视频没有加载出来。Video didn't load. ",
+      el("button", { class: "btn sm", onclick: () => showVideo(video, host, 1) }, "↻ 重新加载视频 Reload video")));
+  }, 8000);
   player = new YT.Player(box.firstChild, {
-    videoId: video, playerVars: { playsinline: 1, rel: 0, cc_load_policy: 0 },
+    videoId: video, playerVars: { playsinline: 1, rel: 0, cc_load_policy: 0, origin: location.origin },
     events: {
-      onReady: () => { playerReady = true; learnTitle(); },
+      onReady: () => {
+        if (gen !== playerGen) return;
+        playerReady = true; clearTimeout(playerWatch);
+        host.querySelectorAll(".player-retry").forEach((n) => n.remove());
+        learnTitle();
+      },
       onStateChange: (e) => {
         if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.CUED) learnTitle();
         // Listen without subtitles: YouTube turns captions back on after a pause, so switch them off on every play.
@@ -93,7 +109,7 @@ async function showVideo(video, host) {
   });
 }
 function dropPlayer() {
-  stopRange();
+  stopRange(); clearTimeout(playerWatch); playerGen++;
   if (player) { try { player.destroy(); } catch { /* already gone */ } }
   player = null; playerReady = false; currentVideo = null;
 }
@@ -697,3 +713,20 @@ render();
 if (storageBroken) toast("⚠️ 本机保存的数据有一部分读不出来，已另存一份备份。Some saved data was unreadable; a backup copy was kept.");
 if (gh.token) sync();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
+
+// ---------- updates: the browser may keep an old copy of this page for ~10 min after a new version is published ----------
+async function checkForUpdate() {
+  const mine = document.querySelector('meta[name="build"]')?.getAttribute("content");
+  if (!mine || mine === "dev") return;
+  try {
+    const html = await (await fetch(location.pathname, { cache: "reload" })).text(); // also refreshes the browser's copy
+    const live = (html.match(/<meta name="build" content="([^"]+)"/) || [])[1];
+    if (!live || live === mine) return;
+    if (sessionStorage.getItem("dr.reloadedFor") === live) return; // never loop
+    sessionStorage.setItem("dr.reloadedFor", live);
+    if (route().view === "part" && rec) return; // don't interrupt a Start→End recording
+    location.reload();
+  } catch { /* offline: keep the current version */ }
+}
+checkForUpdate();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && route().view === "shelf") checkForUpdate(); });

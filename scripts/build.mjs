@@ -15,6 +15,16 @@ for (const f of files) {
 }
 fs.rmSync(site, { recursive: true, force: true });
 fs.mkdirSync(site);
-for (const f of files) fs.copyFileSync(path.join(root, f), path.join(site, f));
+// Stamp a version on every file reference so a browser never mixes an old page with new code after an update.
+// The git commit is stable between rebuilds (the local dev server rebuilds on every page load).
+let v = "dev";
+try { v = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, encoding: "utf8" }).trim() || "dev"; } catch { /* no git */ }
+for (const f of files) {
+  let s = fs.readFileSync(path.join(root, f), "utf8");
+  if (f === "index.html") s = s.replace(/(href|src)="(style\.css|app\.js)"/g, `$1="$2?v=${v}"`)
+    .replace('<meta name="build" content="dev">', `<meta name="build" content="${v}">`);
+  if (f === "app.js") s = s.replace(/from "\.\/lib\.js"/g, `from "./lib.js?v=${v}"`);
+  fs.writeFileSync(path.join(site, f), s);
+}
 fs.writeFileSync(path.join(site, ".nojekyll"), "");
 console.log("Built _site/ (" + files.length + " files)");
