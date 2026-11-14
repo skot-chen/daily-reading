@@ -1,5 +1,5 @@
 // Daily Reading — page logic. Pure logic lives in lib.js (tested); this file is DOM, player and sync.
-import { parseVideoId, partFromTitle, fmtTime, newPart, newCard, clampRange, sortCards, deleteCard, mergeParts,
+import { parseVideoId, partFromTitle, fmtTime, parseTime, newPart, newCard, clampRange, sortCards, deleteCard, mergeParts,
   partStats, partPath, validatePart } from "./lib.js";
 
 const NOTES_REPO = "skot-chen/daily-reading-notes";
@@ -60,7 +60,7 @@ function toast(msg) {
 }
 
 // ---------- YouTube player (a fresh one per page view) ----------
-let player = null, playerReady = false, currentVideo = null, rangeEnd = null, rangeTimer = null, captionsOffFor = null;
+let player = null, playerReady = false, currentVideo = null, rangeEnd = null, rangeTimer = null;
 const ytReady = new Promise((resolve) => {
   window.onYouTubeIframeAPIReady = resolve;
   const s = document.createElement("script");
@@ -82,9 +82,8 @@ async function showVideo(video, host) {
       onReady: () => { playerReady = true; learnTitle(); },
       onStateChange: (e) => {
         if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.CUED) learnTitle();
-        // Listen without subtitles: switch captions off once per video (the learner can still turn them on).
-        if (e.data === YT.PlayerState.PLAYING && captionsOffFor !== currentVideo) {
-          captionsOffFor = currentVideo;
+        // Listen without subtitles: YouTube turns captions back on after a pause, so switch them off on every play.
+        if (e.data === YT.PlayerState.PLAYING) {
           try { player.unloadModule("captions"); player.unloadModule("cc"); } catch { /* not available */ }
         }
       },
@@ -94,7 +93,7 @@ async function showVideo(video, host) {
 function dropPlayer() {
   stopRange();
   if (player) { try { player.destroy(); } catch { /* already gone */ } }
-  player = null; playerReady = false; currentVideo = null; captionsOffFor = null;
+  player = null; playerReady = false; currentVideo = null;
 }
 /** Fill in title / Part number from the video once YouTube knows it. */
 function learnTitle() {
@@ -133,6 +132,7 @@ window.addEventListener("hashchange", render);
 function render() {
   dropPlayer();
   const r = route();
+  document.body.classList.toggle("wide", r.view === "part");
   document.querySelectorAll("[data-nav]").forEach((a) => a.setAttribute("aria-current", a.dataset.nav === r.view ? "page" : "false"));
   $app.replaceChildren();
   if (r.view === "part" && parts[r.video]) renderPart(parts[r.video]);
@@ -189,9 +189,23 @@ function renderPart(p) {
   renderPartHead(p);
   const host = el("div", { class: "player-host" });
   const markBtn = el("button", { class: "btn mark", onclick: () => mark(p) }, "标记 Mark", el("small", {}, "没听懂就点 · 键盘 M"));
+  const endBtn = el("button", { class: "btn endbtn", title: "把最新一张卡片的结束时间设为现在 Set the newest card's end to now", onclick: () => endHere(p) },
+    "到这里结束 End here", el("small", {}, "键盘 E"));
+  const back = el("select", { "aria-label": "标记时往前倒几秒 Rewind when marking",
+    onchange: (e) => store.set("back", Number(e.target.value)) },
+    [2, 3, 4, 5, 8, 10, 15, 20].map((s) => el("option", { value: s, selected: s === markBack() }, "往前倒 " + s + " 秒")));
+  const theater = el("button", { class: "btn sm theater-btn", "aria-pressed": store.get("theater", false) ? "true" : "false",
+    onclick: () => { const on = !store.get("theater", false); store.set("theater", on); section.classList.toggle("theater", on); theater.setAttribute("aria-pressed", on ? "true" : "false"); } },
+    "⤢ 大视频 Big video");
   listEl = el("div", { class: "cards" });
-  $app.append(el("section", { class: "page part" }, headEl, host, markBtn, listEl, renderSummary(p),
-    el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓"))));
+  const section = el("section", { class: "page part" + (store.get("theater", false) ? " theater" : "") }, headEl,
+    el("div", { class: "stage" }, host,
+      el("div", { class: "mark-row" }, markBtn, endBtn),
+      el("div", { class: "row tools" }, back, theater,
+        el("span", { class: "hint" }, "听到难的地方点「标记」；想让句子更长，继续播放，到句子结束时点「到这里结束」。"))),
+    el("div", { class: "notes" }, listEl, renderSummary(p),
+      el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓"))));
+  $app.append(section);
   showVideo(p.video, host);
   renderCards(p);
 }
@@ -206,7 +220,7 @@ function mark(p) {
   const t = player.getCurrentTime();
   player.pauseVideo(); stopRange();
   p = parts[p.video];
-  const c = newCard(t, new Date(), uid());
+  const c = newCard(t, new Date(), uid(), markBack());
   const near = p.cards.find((x) => Math.abs(x.start - c.start) < 1.5);
   if (near) { // pressed twice at the same spot: show the existing card instead of a duplicate
     const n = listEl.querySelector('[data-id="' + near.id + '"]');
@@ -218,16 +232,50 @@ function mark(p) {
   renderCards(parts[p.video]);
   const n = listEl.querySelector('[data-id="' + c.id + '"]');
   if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("new"); }
+  lastCardId = c.id;
+}
+let lastCardId = null;
+function markBack() { const v = Number(store.get("back", 4)); return v > 0 && v <= 60 ? v : 4; }
+/** "End here": the newest card (or the card just before the playhead) ends at the current video time. */
+function endHere(p) {
+  if (!playerReady) return toast("播放器还在加载… Player is loading…");
+  const P = parts[p.video], t = player.getCurrentTime();
+  const c = P.cards.find((x) => x.id === lastCardId && x.start < t) ||
+    P.cards.filter((x) => x.start < t).sort((a, b) => b.start - a.start)[0];
+  if (!c) return toast("先点「标记」，再点「到这里结束」。Mark first, then End here.");
+  player.pauseVideo(); stopRange();
+  Object.assign(c, clampRange(c.start, t)); c.t = new Date().toISOString();
+  savePart(P); renderCards(parts[p.video]);
+  const n = listEl.querySelector('[data-id="' + c.id + '"]');
+  if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.remove("new"); void n.offsetWidth; n.classList.add("new"); }
+  toast("这句改成 " + fmtTime(c.start) + "–" + fmtTime(c.end) + "。Sentence range updated.");
 }
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "m" && e.key !== "M") return;
+  const k = e.key.toLowerCase();
+  if (k !== "m" && k !== "e") return;
   if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")) return;
   const r = route();
-  if (r.view === "part" && parts[r.video]) { e.preventDefault(); mark(parts[r.video]); }
+  if (r.view === "part" && parts[r.video]) { e.preventDefault(); if (k === "m") mark(parts[r.video]); else endHere(parts[r.video]); }
 });
 function renderCards(p) {
   listEl.replaceChildren(...(p.cards.length ? p.cards.map((c) => cardEl(p, c)) :
     [el("p", { class: "hint empty" }, "播放视频，不看字幕听。听不懂的地方点「标记 Mark」，这里会出现一张句子卡片。")]));
+}
+/** One Start/End row: a free time field + ±1 s + "use the video's current time". */
+function adjRow(label, value, set) {
+  const err = el("span", { class: "err", role: "alert" });
+  const inp = el("input", { type: "text", inputmode: "decimal", class: "tm", value: fmtTime(value, true), "aria-label": label,
+    onchange: (e) => {
+      const v = parseTime(e.target.value);
+      if (v == null) { err.textContent = "格式：5:28 或 328 · Use m:ss"; e.target.focus(); return; }
+      set(v);
+    },
+    oninput: () => { err.textContent = ""; } });
+  return el("div", { class: "adj-row" }, el("span", {}, label), inp,
+    el("button", { class: "btn sm", onclick: () => set(value - 1) }, "−1s"),
+    el("button", { class: "btn sm", onclick: () => set(value + 1) }, "+1s"),
+    el("button", { class: "btn sm", onclick: () => { if (playerReady) set(player.getCurrentTime()); else toast("播放器还在加载… Player is loading…"); } },
+      "用现在的时间 Now"), err);
 }
 function autosize(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; }
 function cardEl(p, c) {
@@ -267,13 +315,9 @@ function cardEl(p, c) {
       el("button", { class: "btn", onclick: () => playRange(p.video, c.start, c.end, 1) }, "▶ 重播 Replay"),
       el("button", { class: "btn", onclick: () => playRange(p.video, c.start, c.end, 0.75) }, "🐢 慢放 0.75×"),
       el("details", { class: "adjust" }, el("summary", {}, "调整 Adjust"),
-        el("div", { class: "adj-row" }, el("span", {}, "开始 Start"),
-          el("button", { class: "btn sm", onclick: () => setRange(c.start - 1, c.end) }, "−1s"),
-          el("button", { class: "btn sm", onclick: () => setRange(c.start + 1, c.end) }, "+1s")),
-        el("div", { class: "adj-row" }, el("span", {}, "结束 End"),
-          el("button", { class: "btn sm", onclick: () => setRange(c.start, c.end - 1) }, "−1s"),
-          el("button", { class: "btn sm", onclick: () => setRange(c.start, c.end + 1) }, "+1s"),
-          el("button", { class: "btn sm", onclick: () => { if (playerReady) setRange(c.start, player.getCurrentTime()); } }, "设为结束 Set end here")),
+        adjRow("开始 Start", c.start, (v) => setRange(v, Math.max(c.end, v + 0.5))),
+        adjRow("结束 End", c.end, (v) => setRange(c.start, v)),
+        el("p", { class: "hint" }, "可以直接改时间（如 5:28 或 5:28.5），或者播放到想要的位置点「用现在的时间」。"),
         el("button", { class: "btn sm danger", onclick: () => {
           if (!confirm("删除这张卡片？Delete this card?")) return;
           deleteCard(p, c.id, new Date()); savePart(p); renderCards(parts[p.video]);

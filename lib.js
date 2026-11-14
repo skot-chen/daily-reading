@@ -32,12 +32,25 @@ export function partFromTitle(title) {
   return m ? Number(m[1]) : null;
 }
 
-/** 328.4 → "05:28" (h:mm:ss above an hour) @param {number} sec */
-export function fmtTime(sec) {
-  sec = Math.max(0, Math.floor(Number(sec) || 0));
-  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+/** 328.4 → "05:28" (h:mm:ss above an hour); with tenths → "05:28.4" @param {number} sec @param {boolean} [tenths] */
+export function fmtTime(sec, tenths) {
+  const t = Math.max(0, Number(sec) || 0);
+  const whole = Math.floor(t);
+  const h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60), s = whole % 60;
   const mm = String(m).padStart(2, "0"), ss = String(s).padStart(2, "0");
-  return h ? h + ":" + mm + ":" + ss : mm + ":" + ss;
+  const d = Math.round((t - whole) * 10) % 10;
+  return (h ? h + ":" + mm + ":" + ss : mm + ":" + ss) + (tenths && d ? "." + d : "");
+}
+
+/** What the learner types → seconds: "5:28", "05:28.5", "1:02:05", "328", "328.5". Bad input → null. @param {string} s */
+export function parseTime(s) {
+  const m = String(s || "").trim().replace(/：/g, ":").match(/^(?:(\d+):)?(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const parts = [m[1], m[2], m[3]].filter((x) => x != null).map(Number);
+  const [sec, min = 0, hr = 0] = parts.reverse();
+  if (parts.length > 1 && sec >= 60) return null;
+  if (parts.length > 2 && min >= 60) return null;
+  return Math.round((hr * 3600 + min * 60 + sec) * 10) / 10;
 }
 
 /** @param {string} video @param {number|null} part @param {string} title @param {Date} now @returns {Part} */
@@ -46,11 +59,12 @@ export function newPart(video, part, title, now) {
   return { version: 1, video, part, title: title || "", created: iso.slice(0, 10), updated: iso, cards: [] };
 }
 
-/** A card for "I didn't get what was just said": from 4 s before to 1 s after.
- * @param {number} at current video time @param {Date} now @param {string} id @returns {Card} */
-export function newCard(at, now, id) {
+/** A card for "I didn't get what was just said": from `back` seconds before (default 4) to 1 s after.
+ * @param {number} at current video time @param {Date} now @param {string} id @param {number} [back] @returns {Card} */
+export function newCard(at, now, id, back) {
   const t = Math.max(0, Number(at) || 0);
-  return { id, start: round1(Math.max(0, t - 4)), end: round1(t + 1), en: "", zh: "", mark: "q", t: now.toISOString() };
+  const b = Number(back) > 0 ? Number(back) : 4;
+  return { id, start: round1(Math.max(0, t - b)), end: round1(t + 1), en: "", zh: "", mark: "q", t: now.toISOString() };
 }
 
 /** Keep start >= 0 and end at least 0.5 s after start. @param {number} start @param {number} end */

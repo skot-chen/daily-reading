@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseVideoId, partFromTitle, fmtTime, newPart, newCard, clampRange, deleteCard, mergeParts, partStats, validatePart }
+import { parseVideoId, partFromTitle, fmtTime, parseTime, newPart, newCard, clampRange, deleteCard, mergeParts, partStats, validatePart }
   from "../lib.js";
 
 const T = (s) => new Date("2026-11-14T10:00:" + s + "Z");
@@ -25,10 +25,24 @@ test("fmtTime", () => {
   assert.equal(fmtTime(3725), "1:02:05");
 });
 
-test("newCard covers 4 s before to 1 s after, never below 0", () => {
+test("newCard covers 4 s before (or the chosen rewind) to 1 s after, never below 0", () => {
   const c = newCard(100.26, T("00"), "c1");
   assert.deepEqual([c.start, c.end, c.mark], [96.3, 101.3, "q"]);
   assert.equal(newCard(2, T("00"), "c2").start, 0);
+  assert.equal(newCard(100, T("00"), "c3", 10).start, 90);
+});
+
+test("fmtTime with tenths, parseTime", () => {
+  assert.equal(fmtTime(328.5, true), "05:28.5");
+  assert.equal(fmtTime(328, true), "05:28");
+  assert.equal(parseTime("5:28"), 328);
+  assert.equal(parseTime("05:28.5"), 328.5);
+  assert.equal(parseTime("1:02:05"), 3725);
+  assert.equal(parseTime("328"), 328);
+  assert.equal(parseTime("5：28"), 328);
+  assert.equal(parseTime("5:75"), null);
+  assert.equal(parseTime("abc"), null);
+  assert.equal(parseTime(""), null);
 });
 
 test("clampRange keeps end after start", () => {

@@ -25,7 +25,10 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 ### F2 Mark while listening
 1. Pressing **标记 Mark** (or the `M` key on desktop) pauses the video and adds a card with start time = current time − 4 s (min 0) and end = current time + 1 s.
 2. A card shows its time (mm:ss); cards are sorted by time.
-3. Each card has buttons to nudge start/end by ±1 s, and **设为结束 Set end here** (end = current video time).
+3. Each card has buttons to nudge start/end by ±1 s, a free time field for start and end (`5:28`, `5:28.5`, `328`; bad input shows a hint), and **用现在的时间 Now** (= current video time).
+4. **到这里结束 End here** (or `E`) sets the newest card's end to the current video time, so a sentence can be any length: Mark → keep playing → End here.
+5. A rewind select (2–20 s, remembered) sets how far back a new card starts.
+6. Wide screens (≥ 1100 px): video left and stays in view, cards right; **⤢ 大视频 Big video** puts a large video on top (as tall as the window allows, Mark always visible), remembered.
 
 ### F3 Translate a card
 1. Card has an English box (paste) and a Chinese box. Text is saved automatically (no Save button) and survives reload.
