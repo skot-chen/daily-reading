@@ -226,7 +226,9 @@ function renderPart(p) {
     el("div", { class: "float-bar", title: "按住这里拖动 Drag to move" },
       el("span", {}, "✥ 我的笔记 Notes"), el("small", {}, "按住这里拖动 · 右下角拉大小"),
       el("button", { class: "btn sm", onclick: () => setFloat(false) }, "放回 Dock")),
-    listEl = el("div", { class: "cards" }), renderSummary(p),
+    listEl = el("div", { class: "cards" }), renderSummary(p));
+  // Page links stay on the page (they are not part of the notes, so they never float with them).
+  const links = el("div", { class: "page-links" },
     el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓")),
     el("p", { class: "back" }, el("button", { class: "btn sm danger", onclick: () => clearCards(p) }, "清空这一集的卡片 Clear all cards")));
   const setFloat = (on) => {
@@ -259,7 +261,7 @@ function renderPart(p) {
         el("li", {}, "这句话说完，点 ", el("b", {}, "结束 End"), "（视频暂停）"),
         el("li", {}, "中间这一段就存成一张卡片。键盘：M")),
       el("div", { class: "row tools" }, back, theater, floatBtn, alignBox)),
-    split, notes);
+    split, notes, links);
   section.style.setProperty("--vcol", videoShare() + "%");
   makeSplitter(split, section);
   $app.append(section);

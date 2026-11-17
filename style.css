@@ -246,3 +246,9 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
   .page.part.theater.align-right .player-box { margin-left: auto; margin-right: 0; }
   .page.part.theater .steps { max-width: calc((100vh - 300px) * 16 / 9); margin-left: auto; margin-right: auto; }
 }
+
+/* page links (Shelf / Review / Clear) stay in the page, under the notes column when docked */
+@media (min-width: 1100px) {
+  .page.part > .page-links { grid-column: 3; }
+  .page.part.theater > .page-links, .page.part.floating > .page-links { grid-column: 1 / -1; }
+}
