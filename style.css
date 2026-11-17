@@ -159,7 +159,7 @@ input.tm { width: 100px; min-height: 44px; padding: 6px 8px; font: 16px var(--se
 /* big screens: video left (stays in view), sentences right; "Big video" = full-width video on top */
 body.wide .wrap, body.wide .cover-in { max-width: 1680px; }
 @media (min-width: 1100px) {
-  .page.part { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(380px, 1fr); gap: 0 32px; align-items: start; }
+  .page.part { display: grid; grid-template-columns: minmax(0, var(--vcol, 62%)) 18px minmax(300px, 1fr); gap: 0 10px; align-items: start; }
   .page.part .part-head { grid-column: 1 / -1; }
   .page.part .stage { position: sticky; top: 12px; }
   .page.part .player-host { margin: 0 0 12px; }
@@ -221,4 +221,28 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
   .float-bar small { flex: 1; font: 400 12px var(--sans); color: var(--gold-soft); }
   .float-bar .btn { color: var(--gold); border-color: var(--gold); min-height: 36px; }
   .notes.dragging { opacity: .92; cursor: move; }
+}
+
+/* divider between video and notes (side-by-side layout) + video position in Big video */
+.splitter, .align-group { display: none; }
+@media (min-width: 1100px) {
+  .page.part > .splitter { display: block; align-self: stretch; cursor: col-resize; position: relative; touch-action: none; border-radius: 6px; }
+  .page.part > .splitter::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px dotted var(--line); }
+  .page.part > .splitter::after { content: "⋮"; position: absolute; top: 40vh; left: 50%; transform: translateX(-50%); color: var(--muted);
+    background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px 2px; font-size: 16px; line-height: 1; }
+  .page.part > .splitter:hover::before, .page.part.resizing > .splitter::before { border-left: 2px solid var(--gold); }
+  .page.part > .splitter:hover::after, .page.part.resizing > .splitter::after { color: var(--gold); border-color: var(--gold); }
+  .page.part.resizing { user-select: none; cursor: col-resize; }
+  .page.part.resizing iframe { pointer-events: none; }
+  .page.part.theater > .splitter, .page.part.floating > .splitter { display: none; }
+  .page.part.theater .part-head, .page.part.floating .part-head { grid-column: auto; }
+
+  .page.part.theater .align-group { display: inline-flex; align-items: center; gap: 4px; }
+  .align-group span { font-size: 14px; color: var(--muted); margin: 0 4px 0 8px; }
+  .align-group .btn[aria-pressed=true] { background: var(--cover); color: var(--gold); border-color: var(--cover); }
+  .page.part.theater.align-left .stage > * { margin-left: 0; margin-right: auto; }
+  .page.part.theater.align-right .stage > * { margin-left: auto; margin-right: 0; }
+  .page.part.theater.align-left .player-box { margin-left: 0; margin-right: auto; }
+  .page.part.theater.align-right .player-box { margin-left: auto; margin-right: 0; }
+  .page.part.theater .steps { max-width: calc((100vh - 300px) * 16 / 9); margin-left: auto; margin-right: auto; }
 }
