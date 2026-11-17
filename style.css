@@ -252,3 +252,21 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
   .page.part > .page-links { grid-column: 3; }
   .page.part.theater > .page-links, .page.part.floating > .page-links { grid-column: 1 / -1; }
 }
+
+/* Big video: free position (--vx 0…1 of the free space) and size (--vw); drag bar above, grip at the corner */
+.video-bar, .video-grip { display: none; }
+@media (min-width: 1100px) {
+  .page.part.theater .stage { --fit: calc((100vh - 330px) * 16 / 9);
+    width: min(100%, max(420px, var(--vw, var(--fit))));
+    margin-left: calc((100% - min(100%, max(420px, var(--vw, var(--fit))))) * var(--vx, .5)); }
+  .page.part.theater .stage > *, .page.part.theater .stage .player-box { max-width: none !important; margin-left: 0 !important; margin-right: 0 !important; }
+  .page.part.theater .player-host { position: relative; }
+  .page.part.theater .video-bar { display: flex; align-items: center; gap: 10px; padding: 5px 12px; margin-bottom: 4px; border-radius: 6px 6px 0 0;
+    background: var(--cover); color: var(--gold); cursor: grab; user-select: none; touch-action: none; font: 600 14px var(--serif); }
+  .page.part.theater .video-bar small { font: 400 12px var(--sans); color: var(--gold-soft); }
+  .page.part.theater.resizing .video-bar { cursor: grabbing; }
+  .page.part.theater .video-grip { display: block; position: absolute; right: -6px; bottom: -6px; width: 26px; height: 26px; z-index: 3;
+    cursor: nwse-resize; touch-action: none; border-radius: 4px; background: var(--gold);
+    clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+  .page.part.theater .video-grip:hover { filter: brightness(1.15); }
+}

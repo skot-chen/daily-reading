@@ -238,23 +238,27 @@ function renderPart(p) {
     requestAnimationFrame(() => autosizeAll(notes));
   };
   makeDraggable(notes);
-  // Big video: where the video sits (left / center / right); the free side is for the floating notes.
-  const ALIGN = [["left", "⇤ 靠左"], ["center", "居中"], ["right", "靠右 ⇥"]];
+  // Big video: put the video anywhere (drag its bar), any size (drag its corner), or use the quick buttons.
+  const PRESET = [[0, "⇤ 靠左"], [0.5, "居中"], [1, "靠右 ⇥"]];
   const alignBox = el("div", { class: "align-group", role: "group", "aria-label": "视频位置 Video position" },
     el("span", {}, "视频位置"),
-    ALIGN.map(([v, label]) => el("button", { class: "btn sm", "data-align": v, "aria-pressed": String(videoAlign() === v),
-      onclick: () => setAlign(v) }, label)));
-  const setAlign = (v) => {
-    store.set("vAlign", v);
-    ALIGN.forEach(([a]) => section.classList.toggle("align-" + a, a === v));
-    alignBox.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.align === v)));
-    if (store.get("float", false) && v !== "center") setTimeout(() => floatBeside(notes, host, v), 0);
+    PRESET.map(([x, label]) => el("button", { class: "btn sm", "data-x": x, onclick: () => setVideoBox({ x }) }, label)),
+    el("button", { class: "btn sm", title: "恢复默认大小和位置 Reset size and position", onclick: () => setVideoBox({ x: 0.5, w: null }) }, "↺ 默认"));
+  const setVideoBox = (patch, quiet) => {
+    const box = Object.assign(videoBox(), patch);
+    store.set("vBox", box);
+    applyVideoBox(section, box);
+    alignBox.querySelectorAll("[data-x]").forEach((btn) => btn.setAttribute("aria-pressed", String(Number(btn.dataset.x) === box.x)));
+    if (!quiet && store.get("float", false)) setTimeout(() => floatBeside(notes, host), 0);
   };
+  const videoBar = el("div", { class: "video-bar", title: "按住拖动视频 Drag to move the video" },
+    el("span", {}, "✥ 按住这里拖动视频"), el("small", {}, "右下角 ◢ 拖动改大小 · Drag to move, corner to resize"));
+  const sizeGrip = el("div", { class: "video-grip", title: "拖动改视频大小 Drag to resize", "aria-hidden": "true" });
+  host.append(sizeGrip);
   const split = el("div", { class: "splitter", role: "separator", "aria-orientation": "vertical", tabindex: "0",
     title: "左右拖动，调整视频和笔记的宽度 Drag to resize", "aria-label": "调整视频和笔记的宽度 Resize video and notes" });
-  const section = el("section", { class: "page part" + (store.get("theater", false) ? " theater" : "") + (store.get("float", false) ? " floating" : "")
-    + " align-" + videoAlign() }, headEl,
-    el("div", { class: "stage" }, host,
+  const section = el("section", { class: "page part" + (store.get("theater", false) ? " theater" : "") + (store.get("float", false) ? " floating" : "") }, headEl,
+    el("div", { class: "stage" }, videoBar, host,
       el("div", { class: "mark-row" }, recBtn),
       el("ol", { class: "steps" },
         el("li", {}, "听到难的句子，点 ", el("b", {}, "开始 Start"), "（视频继续播放）"),
@@ -264,7 +268,9 @@ function renderPart(p) {
     split, notes, links);
   section.style.setProperty("--vcol", videoShare() + "%");
   makeSplitter(split, section);
+  makeVideoMovable(section, videoBar, sizeGrip, setVideoBox);
   $app.append(section);
+  setVideoBox({}, true);
   if (store.get("float", false)) placeFloat(notes);
   showVideo(p.video, host);
   renderCards(p);
@@ -311,14 +317,59 @@ function makeDraggable(panel) {
     }, 300);
   }).observe(panel);
 }
-function videoAlign() { const v = store.get("vAlign", "center"); return ["left", "center", "right"].includes(v) ? v : "center"; }
+/** Big-video box: x = 0 (left) … 1 (right) of the free space, w = width in px (null = fit the window height). */
+function videoBox() {
+  const b = store.get("vBox", null);
+  if (b && typeof b.x === "number") return { x: Math.min(1, Math.max(0, b.x)), w: typeof b.w === "number" ? b.w : null };
+  const old = store.get("vAlign", "center"); // earlier left/center/right setting
+  return { x: old === "left" ? 0 : old === "right" ? 1 : 0.5, w: null };
+}
+function applyVideoBox(section, box) {
+  section.style.setProperty("--vx", String(box.x));
+  if (box.w) section.style.setProperty("--vw", Math.round(box.w) + "px"); else section.style.removeProperty("--vw");
+}
+/** Drag the bar above the video to move it left/right; drag the corner grip to change its size. */
+function makeVideoMovable(section, bar, grip, setVideoBox) {
+  const stage = () => section.querySelector(".stage");
+  let drag = null;
+  const begin = (e, mode) => {
+    if (!section.classList.contains("theater") || e.button > 0) return;
+    const st = stage().getBoundingClientRect(), area = section.getBoundingClientRect();
+    const padL = parseFloat(getComputedStyle(section).paddingLeft), padR = parseFloat(getComputedStyle(section).paddingRight);
+    drag = { mode, px: e.clientX, py: e.clientY, left: st.left - area.left - padL, width: st.width, inner: area.width - padL - padR };
+    e.target.setPointerCapture(e.pointerId); section.classList.add("resizing"); e.preventDefault();
+  };
+  const move = (e) => {
+    if (!drag) return;
+    if (drag.mode === "move") {
+      const free = drag.inner - drag.width;
+      if (free <= 0) return;
+      const x = Math.min(1, Math.max(0, (drag.left + e.clientX - drag.px) / free));
+      setVideoBox({ x: Math.round(x * 1000) / 1000 }, true);
+    } else {
+      const dx = e.clientX - drag.px, dy = (e.clientY - drag.py) * 16 / 9;
+      const w = Math.min(drag.inner, Math.max(420, drag.width + (Math.abs(dx) > Math.abs(dy) ? dx : dy)));
+      setVideoBox({ w }, true);
+    }
+  };
+  const end = () => {
+    if (!drag) return;
+    drag = null; section.classList.remove("resizing");
+    setVideoBox({}); // remember + move floating notes into the free space
+  };
+  bar.addEventListener("pointerdown", (e) => begin(e, "move"));
+  grip.addEventListener("pointerdown", (e) => begin(e, "size"));
+  for (const n of [bar, grip]) { n.addEventListener("pointermove", move); n.addEventListener("pointerup", end); n.addEventListener("pointercancel", end); }
+}
 /** Share of the width for the video in the side-by-side layout, in % (35–80). */
 function videoShare() { const v = Number(store.get("vShare", 62)); return v >= 35 && v <= 80 ? v : 62; }
-/** Put the floating notes into the free space next to the video (after "video left/right"). */
-function floatBeside(panel, host, side) {
+/** Put the floating notes into the bigger free space beside the video. */
+function floatBeside(panel, host) {
   const v = (host.querySelector(".player-box") || host).getBoundingClientRect(), gap = 16;
-  const x = side === "left" ? v.right + gap : gap;
-  const w = side === "left" ? innerWidth - v.right - 2 * gap : v.left - 2 * gap;
+  const rightSpace = innerWidth - v.right - 2 * gap, leftSpace = v.left - 2 * gap;
+  const toRight = rightSpace >= leftSpace;
+  const x = toRight ? v.right + gap : gap;
+  const w = toRight ? rightSpace : leftSpace;
   if (w < 320) return; // not enough room: leave the panel where it is
   store.set("floatBox", { x, y: Math.max(8, v.top), w, h: innerHeight - Math.max(8, v.top) - gap });
   placeFloat(panel);
