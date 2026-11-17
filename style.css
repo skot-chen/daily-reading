@@ -270,3 +270,5 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
     clip-path: polygon(100% 0, 100% 100%, 0 100%); }
   .page.part.theater .video-grip:hover { filter: brightness(1.15); }
 }
+.sync-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sync-head h2 { margin: 0; }

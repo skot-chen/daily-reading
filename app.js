@@ -832,11 +832,39 @@ function refreshAfterPull() {
   const s = renderSummary(p), old = document.querySelector(".summary");
   if (old) old.replaceWith(s || ""); else if (s) listEl.after(s);
 }
+// The sync settings are locked with a password on this page. This only stops someone who uses this device from
+// changing or removing the token; the notes themselves are protected by the private repo + the token.
+// Only a slow salted hash is stored here, never the password.
+const SYNC_LOCK = { salt: "dr-sync-lock-f27b5cd0d070a622", hash: "4c126e7a47a2431b0e51cee57ab42abf2cb96305eea90b9ebbad5824dae17154", rounds: 300000 };
+async function checkSyncPassword(pw) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: new TextEncoder().encode(SYNC_LOCK.salt), iterations: SYNC_LOCK.rounds }, key, 256);
+  return Array.from(new Uint8Array(bits), (b) => b.toString(16).padStart(2, "0")).join("") === SYNC_LOCK.hash;
+}
+function syncUnlocked() { try { return sessionStorage.getItem("dr.syncUnlocked") === "1"; } catch { return false; } }
 function renderSyncPanel() {
   const box = el("section", { class: "page sync" });
+  const drawLocked = () => {
+    const pw = el("input", { type: "password", autocomplete: "off", placeholder: "密码 Password", "aria-label": "同步设置密码 Sync settings password" });
+    const err = el("p", { class: "err", role: "alert" });
+    pw.addEventListener("input", () => { err.textContent = ""; });
+    const unlock = async () => {
+      if (!pw.value) { err.textContent = "先输入密码。Enter the password."; pw.focus(); return; }
+      if (await checkSyncPassword(pw.value)) { try { sessionStorage.setItem("dr.syncUnlocked", "1"); } catch { /* private mode */ } draw(); }
+      else { err.textContent = "密码不对。Wrong password."; pw.select(); }
+    };
+    pw.addEventListener("keydown", (e) => { if (e.key === "Enter") unlock(); });
+    box.replaceChildren(...[el("h2", {}, "☁ 同步 Sync 🔒"),
+      el("p", { class: "hint" }, gh.token ? "已连接，正在自动同步。修改同步设置需要密码。Connected and syncing. Settings need the password."
+        : "同步设置已上锁。输入密码后才能连接 GitHub。Sync settings are locked."),
+      gh.token ? el("p", { id: "sync-msg", class: "hint", role: "status" }, store.get("syncMsg", "")) : null,
+      el("div", { class: "row" }, pw, el("button", { class: "btn primary", onclick: unlock }, "🔓 解锁 Unlock")), err].filter(Boolean));
+  };
   const draw = () => {
+    if (!syncUnlocked()) return drawLocked();
     const tokenIn = el("input", { type: "password", autocomplete: "off", placeholder: "github_pat_…", "aria-label": "GitHub token 钥匙" });
-    box.replaceChildren(el("h2", {}, "☁ 同步 Sync"), ...(
+    box.replaceChildren(el("div", { class: "sync-head" }, el("h2", {}, "☁ 同步 Sync"),
+      el("button", { class: "btn sm", onclick: () => { try { sessionStorage.removeItem("dr.syncUnlocked"); } catch { /* */ } draw(); } }, "🔒 锁上 Lock")), ...(
       gh.token ? [
         el("p", {}, "已连接 Connected → ", el("code", {}, NOTES_REPO), "（私密仓库，别人看不到 private）"),
         el("p", { id: "sync-msg", class: "hint", role: "status" }, store.get("syncMsg", "")),

@@ -47,6 +47,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 3. Edits sync automatically a few seconds after I stop typing, one file per Part (`parts/<YouTube id>.json`); status line shows ✓ time or a clear Chinese error.
 4. On another device with the token, opening the site loads all Parts from the repo; newer edits win per card.
 5. Visitors without the token see an empty notebook and none of my content (the data repo is private).
+6. The sync settings panel is locked with a password (only a salted PBKDF2 hash is in the code). Unlock lasts until the tab is closed; **🔒 锁上 Lock** locks again. Background sync keeps running while locked.
 
 ### F6 AI review shown in the page
 1. When a card has an AI review (written by the Mac AI into the repo), it shows a folded **AI 批改** under my Chinese; opening it shows reference translation, verdict (✅ / ⚠️ / ❌ + one line) and the difficulty.
