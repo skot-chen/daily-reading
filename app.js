@@ -218,24 +218,84 @@ function renderPart(p) {
     onchange: (e) => store.set("back", Number(e.target.value)) },
     [0, 1, 2, 3, 4, 5, 8, 10].map((s) => el("option", { value: s, selected: s === markBack() }, s ? "开始时往前倒 " + s + " 秒" : "开始时不往前倒")));
   const theater = el("button", { class: "btn sm theater-btn", "aria-pressed": store.get("theater", false) ? "true" : "false",
-    onclick: () => { const on = !store.get("theater", false); store.set("theater", on); section.classList.toggle("theater", on); theater.setAttribute("aria-pressed", on ? "true" : "false"); } },
+    onclick: () => { const on = !store.get("theater", false); store.set("theater", on); section.classList.toggle("theater", on); theater.setAttribute("aria-pressed", on ? "true" : "false"); requestAnimationFrame(() => autosizeAll(section)); } },
     "⤢ 大视频 Big video");
-  listEl = el("div", { class: "cards" });
-  const section = el("section", { class: "page part" + (store.get("theater", false) ? " theater" : "") }, headEl,
+  const floatBtn = el("button", { class: "btn sm float-btn", "aria-pressed": store.get("float", false) ? "true" : "false",
+    onclick: () => setFloat(!store.get("float", false)) }, "🗗 笔记浮动 Float notes");
+  const notes = el("div", { class: "notes" },
+    el("div", { class: "float-bar", title: "按住这里拖动 Drag to move" },
+      el("span", {}, "✥ 我的笔记 Notes"), el("small", {}, "按住这里拖动 · 右下角拉大小"),
+      el("button", { class: "btn sm", onclick: () => setFloat(false) }, "放回 Dock")),
+    listEl = el("div", { class: "cards" }), renderSummary(p),
+    el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓")),
+    el("p", { class: "back" }, el("button", { class: "btn sm danger", onclick: () => clearCards(p) }, "清空这一集的卡片 Clear all cards")));
+  const setFloat = (on) => {
+    store.set("float", on); floatBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    section.classList.toggle("floating", on);
+    if (on) placeFloat(notes);
+    requestAnimationFrame(() => autosizeAll(notes));
+  };
+  makeDraggable(notes);
+  const section = el("section", { class: "page part" + (store.get("theater", false) ? " theater" : "") + (store.get("float", false) ? " floating" : "") }, headEl,
     el("div", { class: "stage" }, host,
       el("div", { class: "mark-row" }, recBtn),
       el("ol", { class: "steps" },
         el("li", {}, "听到难的句子，点 ", el("b", {}, "开始 Start"), "（视频继续播放）"),
         el("li", {}, "这句话说完，点 ", el("b", {}, "结束 End"), "（视频暂停）"),
         el("li", {}, "中间这一段就存成一张卡片。键盘：M")),
-      el("div", { class: "row tools" }, back, theater)),
-    el("div", { class: "notes" }, listEl, renderSummary(p),
-      el("p", { class: "back" }, el("a", { href: "#/" }, "← 书架 Shelf"), " · ", el("a", { href: "#/review/" + p.video }, "复习这一集 Review ❓")),
-      el("p", { class: "back" }, el("button", { class: "btn sm danger", onclick: () => clearCards(p) }, "清空这一集的卡片 Clear all cards"))));
+      el("div", { class: "row tools" }, back, theater, floatBtn)),
+    notes);
   $app.append(section);
+  if (store.get("float", false)) placeFloat(notes);
   showVideo(p.video, host);
   renderCards(p);
 }
+// ---------- floating notes panel (wide screens): drag by its bar, resize from the corner, position remembered ----------
+/** Put the panel where it was last time (or at the right edge), kept inside the window. */
+function placeFloat(panel) {
+  const f = store.get("floatBox", null) || { x: innerWidth - 500, y: 90, w: 460, h: innerHeight - 120 };
+  const w = Math.min(Math.max(320, f.w), innerWidth - 16), h = Math.min(Math.max(220, f.h), innerHeight - 16);
+  const x = Math.min(Math.max(8, f.x), innerWidth - w - 8), y = Math.min(Math.max(8, f.y), innerHeight - 60);
+  Object.entries({ "--fx": x, "--fy": y, "--fw": w, "--fh": h }).forEach(([k, v]) => panel.style.setProperty(k, Math.round(v) + "px"));
+}
+function saveFloat(panel) {
+  const r = panel.getBoundingClientRect();
+  if (r.width) store.set("floatBox", { x: r.left, y: r.top, w: r.width, h: r.height });
+}
+function makeDraggable(panel) {
+  const bar = panel.querySelector(".float-bar");
+  let start = null;
+  bar.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button") || !panel.closest(".floating")) return;
+    const r = panel.getBoundingClientRect();
+    start = { px: e.clientX, py: e.clientY, x: r.left, y: r.top };
+    bar.setPointerCapture(e.pointerId); panel.classList.add("dragging"); e.preventDefault();
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (!start) return;
+    const r = panel.getBoundingClientRect();
+    const x = Math.min(Math.max(0, start.x + e.clientX - start.px), innerWidth - r.width);
+    const y = Math.min(Math.max(0, start.y + e.clientY - start.py), innerHeight - 48);
+    panel.style.setProperty("--fx", Math.round(x) + "px"); panel.style.setProperty("--fy", Math.round(y) + "px");
+  });
+  const end = () => { if (!start) return; start = null; panel.classList.remove("dragging"); saveFloat(panel); };
+  bar.addEventListener("pointerup", end); bar.addEventListener("pointercancel", end);
+  // Resizing with the corner handle (CSS resize) → remember the size.
+  let t = null;
+  new ResizeObserver(() => {
+    if (!panel.closest(".floating") || start) return;
+    clearTimeout(t); t = setTimeout(() => {
+      autosizeAll(panel);
+      const r = panel.getBoundingClientRect();
+      panel.style.setProperty("--fw", Math.round(r.width) + "px"); panel.style.setProperty("--fh", Math.round(r.height) + "px");
+      saveFloat(panel);
+    }, 300);
+  }).observe(panel);
+}
+window.addEventListener("resize", () => {
+  const n = document.querySelector(".floating .notes"); if (n) placeFloat(n);
+  if (listEl && listEl.isConnected) autosizeAll(listEl);
+});
 function drawRecBtn() {
   if (!recBtn) return;
   if (rec) {
@@ -365,6 +425,8 @@ function adjRow(label, value, set) {
     el("button", { class: "btn sm", onclick: () => { if (playerReady) set(player.getCurrentTime()); else toast("播放器还在加载… Player is loading…"); } },
       "用现在的时间 Now"), err);
 }
+/** Text boxes grow with their text; re-measure after the width changes. @param {Element} root */
+function autosizeAll(root) { root.querySelectorAll("textarea").forEach((t) => autosize(t)); }
 function autosize(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; }
 function cardEl(p, c) {
   const touch = () => { c.t = new Date().toISOString(); savePart(p); };

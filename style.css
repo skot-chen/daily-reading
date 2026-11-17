@@ -203,3 +203,22 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
 .parts li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 .parts li > a { flex: 1; min-width: 0; border-bottom: 0; }
 .parts li > .delbtn { flex: none; }
+
+/* floating notes panel (wide screens only) */
+.float-bar, .float-btn { display: none; }
+@media (min-width: 1100px) {
+  .float-btn { display: inline-flex; align-items: center; }
+  .float-btn[aria-pressed=true] { background: var(--cover); color: var(--gold); border-color: var(--cover); }
+  .page.part.floating { grid-template-columns: minmax(0, 1fr); }
+  .page.part.floating .stage { position: static; }
+  .page.part.floating .notes { position: fixed; left: var(--fx, 60%); top: var(--fy, 90px); width: var(--fw, 460px); height: var(--fh, 70vh);
+    min-width: 320px; min-height: 220px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
+    z-index: 6; overflow: auto; resize: both; background: var(--paper); border: 2px solid var(--gold); border-radius: 8px;
+    box-shadow: 0 14px 44px #0006; padding: 0 16px 14px; margin: 0; }
+  .page.part.floating .float-bar { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 2;
+    margin: 0 -16px 10px; padding: 6px 8px 6px 14px; background: var(--cover); color: var(--gold); cursor: move;
+    font: 600 15px var(--serif); user-select: none; touch-action: none; }
+  .float-bar small { flex: 1; font: 400 12px var(--sans); color: var(--gold-soft); }
+  .float-bar .btn { color: var(--gold); border-color: var(--gold); min-height: 36px; }
+  .notes.dragging { opacity: .92; cursor: move; }
+}

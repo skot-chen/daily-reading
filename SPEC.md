@@ -28,7 +28,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 3. Each card shows its range (`00:03–00:08 ✎`); clicking it opens time editing: free time fields (`5:28`, `5:28.5`, `328`; bad input shows a hint), ±1 s, **用现在的时间 Now**. Cards stay sorted by time.
    - An edit that still overlaps the old range applies directly. An edit that no longer overlaps it opens a dialog (old vs new range, any overlap with other cards) with **新建一张卡片 New card** (default, old card unchanged) / **移动这张卡片 Move** / **取消 Cancel**. Moving one edge past the other keeps the sentence length.
 4. Each card has a visible ✕ delete (with confirm). **清空这一集的卡片 Clear all cards** (bottom of the Part page, with confirm) deletes every card but keeps the Part and its video. Removing a whole Part is the ✕ on its shelf row (with confirm), also removed from the notes repo on next sync.
-5. Wide screens (≥ 1100 px): video left and stays in view, cards right; **⤢ 大视频 Big video** puts a large video on top (Start/End always visible), remembered.
+5. Wide screens (≥ 1100 px): video left and stays in view, cards right; **⤢ 大视频 Big video** puts a large video on top (Start/End always visible), remembered. **🗗 笔记浮动 Float notes** turns the notes into a floating window: drag it by its bar anywhere, resize from the corner, **放回 Dock** puts it back; position, size and on/off are remembered and kept inside the window.
 
 ### F3 Translate a card
 1. Card has an English box (paste) and a Chinese box. Text is saved automatically (no Save button) and survives reload.
