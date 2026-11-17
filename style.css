@@ -157,7 +157,7 @@ input.tm { width: 100px; min-height: 44px; padding: 6px 8px; font: 16px var(--se
 .adj-row .err { flex-basis: 100%; }
 
 /* big screens: video left (stays in view), sentences right; "Big video" = full-width video on top */
-body.wide .wrap, body.wide .cover-in { max-width: 1680px; }
+body.wide .wrap, body.wide .cover-in { max-width: none; } /* practice page uses the whole window width */
 @media (min-width: 1100px) {
   .page.part { display: grid; grid-template-columns: minmax(0, var(--vcol, 62%)) 18px minmax(300px, 1fr); gap: 0 10px; align-items: start; }
   .page.part .part-head { grid-column: 1 / -1; }
