@@ -37,6 +37,7 @@ down, and the learner reviews ❓ sentences on the phone on the way to work.
 4. A card can be deleted (with confirm).
 
 ### F4 Replay
+0. **🎬 简洁视频 Clean video** (default on, remembered): YouTube's own controls are off and a clear layer over the picture takes clicks (play/pause), so nothing lingers over the video; our bar under the video has play/pause, ±5 s, progress slider, time and speed. Keyboard on the Part/Review page: Space play/pause, ← → 5 s. Turning it off brings back YouTube's controls.
 1. **重播 Replay** seeks to start and plays until end, then pauses.
 2. **慢放 0.75×** plays the same range at 0.75 speed.
 3. Clicking a card's start time does the same as Replay.

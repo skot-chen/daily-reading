@@ -272,3 +272,13 @@ dialog.ask p { margin: 4px 0; font-size: 15px; }
 }
 .sync-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .sync-head h2 { margin: 0; }
+
+/* our own control bar under the video (clean mode) */
+.vctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 8px; margin-top: 4px; background: var(--cover);
+  border-radius: 0 0 6px 6px; color: var(--gold-soft); }
+.vctl .btn { color: var(--gold); border-color: var(--gold); min-width: 44px; }
+.vctl input[type=range] { flex: 1 1 160px; min-height: 32px; padding: 0; border: 0; background: transparent; accent-color: var(--gold); }
+.vctl-time { font: 13px var(--sans); white-space: nowrap; }
+.vctl select { min-height: 36px; padding: 4px 6px; background: var(--cover); color: var(--gold); border-color: var(--gold); }
+.tools .btn[aria-pressed=true] { background: var(--cover); color: var(--gold); border-color: var(--cover); }
+.player-box .player-cover { position: absolute; inset: 0; z-index: 2; cursor: pointer; background: transparent; }

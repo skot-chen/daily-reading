@@ -71,13 +71,21 @@ const ytReady = new Promise((resolve) => {
   document.head.append(s);
 });
 /** Create a fresh player inside `host` (moving an iframe in the page reloads it and breaks the API link). */
-let playerGen = 0, playerWatch = null;
+let playerGen = 0, playerWatch = null, ctlTimer = null;
+/** Clean video: YouTube's own buttons/progress bar are off (they linger over the picture); our bar below the video replaces them. */
+function cleanVideo() { return store.get("cleanVideo", true) !== false; }
 async function showVideo(video, host, attempt = 1) {
   dropPlayer();
   const gen = ++playerGen;
-  host.querySelectorAll(".player-box, .player-retry").forEach((n) => n.remove());
+  host.querySelectorAll(".player-box, .player-retry, .vctl").forEach((n) => n.remove());
   const box = el("div", { class: "player-box" }, el("div", {}));
+  const clean = cleanVideo();
   host.append(box);
+  if (clean) {
+    // A clear layer over the picture: clicks play/pause here, and YouTube never sees the mouse, so it shows no overlay.
+    box.append(el("div", { class: "player-cover", title: "点击播放/暂停 Click to play/pause", onclick: () => togglePlay() }));
+    host.append(videoControls(gen));
+  }
   await ytReady;
   if (!box.isConnected || gen !== playerGen) return; // the learner already left this page
   currentVideo = video;
@@ -90,7 +98,8 @@ async function showVideo(video, host, attempt = 1) {
       el("button", { class: "btn sm", onclick: () => showVideo(video, host, 1) }, "↻ 重新加载视频 Reload video")));
   }, 8000);
   player = new YT.Player(box.firstChild, {
-    videoId: video, playerVars: { playsinline: 1, rel: 0, cc_load_policy: 0, origin: location.origin },
+    videoId: video, playerVars: { playsinline: 1, rel: 0, cc_load_policy: 0, origin: location.origin,
+      controls: clean ? 0 : 1, disablekb: clean ? 1 : 0, iv_load_policy: 3, fs: clean ? 0 : 1 },
     events: {
       onReady: () => {
         if (gen !== playerGen) return;
@@ -108,8 +117,44 @@ async function showVideo(video, host, attempt = 1) {
     },
   });
 }
+/** Our own control bar under the video (clean mode): play/pause, ±5 s, progress, speed. */
+function videoControls(gen) {
+  const playBtn = el("button", { class: "btn sm", "aria-label": "播放/暂停 Play/Pause", onclick: () => togglePlay() }, "▶");
+  const time = el("span", { class: "vctl-time" }, "00:00 / 00:00");
+  const seek = el("input", { type: "range", min: "0", max: "1000", value: "0", step: "1", "aria-label": "进度 Progress" });
+  let seeking = false;
+  seek.addEventListener("input", () => { seeking = true; if (playerReady) time.textContent = fmtTime(seek.value / 1000 * player.getDuration()) + " / " + fmtTime(player.getDuration()); });
+  seek.addEventListener("change", () => { if (playerReady) { stopRange(); player.seekTo(seek.value / 1000 * player.getDuration(), true); } seeking = false; });
+  const rate = el("select", { "aria-label": "速度 Speed", onchange: (e) => { if (playerReady) player.setPlaybackRate(Number(e.target.value)); } },
+    [0.75, 1, 1.25].map((r) => el("option", { value: r, selected: r === 1 }, r + "×")));
+  const bar = el("div", { class: "vctl" }, playBtn,
+    el("button", { class: "btn sm", "aria-label": "后退 5 秒 Back 5 s", onclick: () => nudge(-5) }, "↺ 5s"),
+    el("button", { class: "btn sm", "aria-label": "前进 5 秒 Forward 5 s", onclick: () => nudge(5) }, "5s ↻"),
+    seek, time, rate);
+  clearInterval(ctlTimer);
+  ctlTimer = setInterval(() => {
+    if (gen !== playerGen || !bar.isConnected) { clearInterval(ctlTimer); return; }
+    if (!playerReady) return;
+    const d = player.getDuration() || 0, t = player.getCurrentTime() || 0;
+    playBtn.textContent = player.getPlayerState() === YT.PlayerState.PLAYING ? "⏸" : "▶";
+    if (!seeking) { seek.value = String(d ? Math.round(t / d * 1000) : 0); time.textContent = fmtTime(t) + " / " + fmtTime(d); }
+    if (document.activeElement !== rate) rate.value = String(player.getPlaybackRate());
+  }, 250);
+  return bar;
+}
+function togglePlay() {
+  if (!playerReady) return;
+  if (player.getPlayerState() === YT.PlayerState.PLAYING) { player.pauseVideo(); stopRange(); } else player.playVideo();
+}
+function nudge(sec) { if (!playerReady) return; stopRange(); player.seekTo(Math.max(0, player.getCurrentTime() + sec), true); }
+// After a click on the video, the keyboard belongs to YouTube's frame (and its overlay lingers). Take focus back so
+// M / Space / ← → keep working and the picture stays clean.
+window.addEventListener("blur", () => setTimeout(() => {
+  const a = document.activeElement;
+  if (cleanVideo() && a && a.tagName === "IFRAME" && a.closest(".player-box")) { a.blur(); window.focus(); }
+}, 0));
 function dropPlayer() {
-  stopRange(); clearTimeout(playerWatch); playerGen++;
+  stopRange(); clearTimeout(playerWatch); clearInterval(ctlTimer); playerGen++;
   if (player) { try { player.destroy(); } catch { /* already gone */ } }
   player = null; playerReady = false; currentVideo = null;
 }
@@ -238,6 +283,10 @@ function renderPart(p) {
     requestAnimationFrame(() => autosizeAll(notes));
   };
   makeDraggable(notes);
+  const cleanBtn = el("button", { class: "btn sm", "aria-pressed": String(cleanVideo()),
+    title: "隐藏 YouTube 自带的按钮和进度条，用视频下面的控制条 Hide YouTube's own controls",
+    onclick: () => { store.set("cleanVideo", !cleanVideo()); cleanBtn.setAttribute("aria-pressed", String(cleanVideo())); showVideo(p.video, host); } },
+    "🎬 简洁视频 Clean video");
   // Big video: put the video anywhere (drag its bar), any size (drag its corner), or use the quick buttons.
   const PRESET = [[0, "⇤ 靠左"], [0.5, "居中"], [1, "靠右 ⇥"]];
   const alignBox = el("div", { class: "align-group", role: "group", "aria-label": "视频位置 Video position" },
@@ -264,7 +313,7 @@ function renderPart(p) {
         el("li", {}, "听到难的句子，点 ", el("b", {}, "开始 Start"), "（视频继续播放）"),
         el("li", {}, "这句话说完，点 ", el("b", {}, "结束 End"), "（视频暂停）"),
         el("li", {}, "中间这一段就存成一张卡片。键盘：M")),
-      el("div", { class: "row tools" }, back, theater, floatBtn, alignBox)),
+      el("div", { class: "row tools" }, back, theater, floatBtn, cleanBtn, alignBox)),
     split, notes, links);
   section.style.setProperty("--vcol", videoShare() + "%");
   makeSplitter(split, section);
@@ -455,8 +504,14 @@ function endRec() {
 function markBack() { const v = Number(store.get("back", 2)); return v >= 0 && v <= 60 ? v : 2; }
 document.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
-  if (k !== "m" && k !== "e") return;
   if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")) return;
+  const onButton = document.activeElement?.tagName === "BUTTON" || document.activeElement?.getAttribute("role") === "separator";
+  if (player && !onButton && (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") && route().view !== "shelf") {
+    e.preventDefault();
+    if (e.key === " ") togglePlay(); else nudge(e.key === "ArrowLeft" ? -5 : 5);
+    return;
+  }
+  if (k !== "m" && k !== "e") return;
   const r = route();
   if (r.view !== "part" || !parts[r.video]) return;
   e.preventDefault();
